@@ -1,6 +1,6 @@
 # Ero Trap Dungeon Maker — Phase 4 Wayfinder Map (Git Workspace & Deployment)
 
-## Destination 📋 DESIGNED — READY TO EXECUTE (2026-11-13)
+## Destination ✅ COMPLETED (2026-11-13)
 
 Initialize `C:\novel\trap_dun` as a clean, self-contained **Git workspace**, make all Vite build and static asset paths subpath-portable, automate **Vitest + TypeScript + Vite build** CI checks, and deploy the standalone browser RPG to a **Public GitHub repository + GitHub Pages** via GitHub Actions.
 
@@ -20,7 +20,7 @@ Initialize `C:\novel\trap_dun` as a clean, self-contained **Git workspace**, mak
 - **[11: Git Workspace Setup, Hygiene & Documentation](tickets/11-git-workspace-and-hygiene.md)** — `closed`: Created root `.gitignore`, `.gitattributes`, and `README.md`; verified clean tracked file inventory (`555` files, `78.44 MB` total, max file `326.26 KB`).
 - **[12: Subpath `BASE_URL` & Asset Portability](tickets/12-base-url-and-asset-portability.md)** — `closed`: Parameterized `vite.config.ts` `base`, added `vite-env.d.ts` and `assetUrl()` in `assetManifest.ts`, updated `albumCatalog.ts`, `HeaderBar.tsx`, `saveLoad.ts`, `ChroniclePanel.tsx`, and `index.html`; verified `vitest run` (`109/109`) + subpath `vite build`.
 - **[13: GitHub Actions CI & GitHub Pages Auto-Deploy](tickets/13-github-actions-ci-and-pages-deploy.md)** — `closed`: Created `.github/workflows/ci.yml` and `.github/workflows/deploy.yml` with dynamic Pages `VITE_BASE_PATH`.
-- **[14: Repo Creation, Push, Pages Activation & Live E2E Verification](tickets/14-repo-creation-live-deploy-and-verify.md)** — `ready-for-agent`: `git init -b main` complete; ready to commit, create public GitHub repo under `lolindill`, push `main`, enable GitHub Pages, and verify live deployment.
+- **[14: Repo Creation, Push, Pages Activation & Live E2E Verification](tickets/14-repo-creation-live-deploy-and-verify.md)** — `closed`: Force-pushed clean root history `6d2cee5` (555 files / 78.44 MB, nested `app/.git` removed) to public [`lolindill/trap-dungeon`](https://github.com/lolindill/trap-dungeon); Pages `build_type: workflow` enabled; CI + Deploy green on first run; live E2E at https://lolindill.github.io/trap-dungeon/ verified — 0 console errors, 0 broken imgs, Original Codex (301+29), GalleryModal (446 assets), full offline `Build → Prep → Raid → Day 1` loop, localStorage saves writing.
 
 ## Out of scope
 
