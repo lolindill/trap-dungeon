@@ -90,6 +90,11 @@ export function FloorBoard({
   const selectedFloor = state.floors[state.selectedFloor - 1] ?? state.floors[0];
   const installCost = getInstallCost(selectedFloor.slots.length);
   const canAffordSlot = installCost !== null && state.points >= installCost;
+  // UX: explain WHY install controls are disabled instead of silently greying them out
+  const mpShortHint =
+    installCost !== null && !canAffordSlot
+      ? `Need ${installCost} MP · have ${state.points} MP (short ${installCost - state.points} MP) — earn MP from raids, Estate days & expeditions`
+      : '';
   const totalTraps = getTotalTrapCount(state.floors);
 
   const pinnedBlueprints = blueprints.filter((b) => b.pinned);
@@ -340,7 +345,11 @@ export function FloorBoard({
             className={`dk-btn sm ${suggestOpen ? 'active' : ''}`}
             disabled={installCost === null}
             onClick={handleSuggestButton}
-            title="Roll 3 Original Codex recommendations (prioritizing X.TPC combo partners) or auto-fill empty slots"
+            title={
+              installCost === null
+                ? `Floor ${selectedFloor.floor} is full (${CFG.SLOTS}/${CFG.SLOTS} slots) — dismantle a trap to install more`
+                : 'Roll 3 Original Codex recommendations (prioritizing X.TPC combo partners) or auto-fill empty slots'
+            }
           >
             🎲 Suggest
           </button>
@@ -449,13 +458,20 @@ export function FloorBoard({
                     type="button"
                     className="dk-btn sm pri"
                     disabled={!canAffordSlot}
+                    title={
+                      installCost === null
+                        ? `Floor ${selectedFloor.floor} is full (${CFG.SLOTS}/${CFG.SLOTS} slots)`
+                        : mpShortHint || `Deploy to ${selectedFloor.floor}F for ${installCost} MP`
+                    }
                     onClick={() => {
                       onInstallBlueprint(selectedFloor.floor, codexTrapToBlueprint(entry));
                       setSuggestOpen(false);
                     }}
                   >
                     {installCost !== null
-                      ? `Deploy to ${selectedFloor.floor}F (-${installCost} MP)`
+                      ? canAffordSlot
+                        ? `Deploy to ${selectedFloor.floor}F (-${installCost} MP)`
+                        : `⛔ Short ${installCost - state.points} MP (need ${installCost})`
                       : 'Floor Full'}
                   </button>
                 </div>
@@ -546,9 +562,16 @@ export function FloorBoard({
                     type="button"
                     className="dk-btn sm up"
                     disabled={!canUpg}
+                    title={
+                      canUpg
+                        ? undefined
+                        : `Need ${upgCost} MP · have ${state.points} MP (short ${upgCost - state.points} MP)`
+                    }
                     onClick={() => onUpgradeTrap(selectedFloor.floor, idx)}
                   >
-                    Upgrade → {nextGrade} (-{upgCost} MP)
+                    {canUpg
+                      ? `Upgrade → ${nextGrade} (-${upgCost} MP)`
+                      : `Upgrade → ${nextGrade} · ⛔ short ${upgCost - state.points} MP`}
                   </button>
                 ) : slot.grade === '?' ? (
                   <span className="dk-help-hint">Graded during Prep</span>
@@ -821,7 +844,9 @@ export function FloorBoard({
             <b style={{ color: 'var(--y)' }}>⚡ QUICK DEPLOY SHORTCUTS</b>{' '}
             <span className="dk-help-hint">
               {installCost !== null
-                ? `(1 click → ${selectedFloor.floor}F for ${installCost} MP · pre-rated skips AI re-grading)`
+                ? `(1 click → ${selectedFloor.floor}F for ${installCost} MP${
+                    canAffordSlot ? '' : ` · ⛔ short ${installCost - state.points} MP`
+                  } · pre-rated skips AI re-grading)`
                 : '(Floor Full)'}
             </span>
           </div>
@@ -844,6 +869,11 @@ export function FloorBoard({
               ? roomCost !== null && state.points >= roomCost
               : canAffordSlot;
             const badgeGrade = isRoom ? (bp.roomSynergy ?? bp.grade) : bp.grade;
+            const deployCost = isRoom ? roomCost : installCost;
+            const mpShort =
+              !canDeployBp && deployCost !== null
+                ? Math.max(0, deployCost - state.points)
+                : 0;
 
             return (
               <button
@@ -854,12 +884,15 @@ export function FloorBoard({
                 title={
                   isRoom
                     ? `Room (${bp.roomSlots!.length} traps · ${roomCost !== null ? `${roomCost} MP` : 'Not enough slots'}): ${bp.detail}`
-                    : bp.detail
+                    : mpShort > 0 && deployCost !== null
+                      ? `Need ${deployCost} MP · have ${state.points} MP (short ${mpShort} MP) — earn MP from raids, Estate days & expeditions`
+                      : bp.detail
                 }
                 onClick={() => onInstallBlueprint(selectedFloor.floor, bp)}
               >
                 <GradeBadge grade={badgeGrade} label={isRoom ? `R:${badgeGrade}` : badgeGrade} />
                 <span>{bp.name}</span>
+                {mpShort > 0 && <small className="dk-mp-short">⛔{mpShort}</small>}
               </button>
             );
           })}
@@ -872,7 +905,9 @@ export function FloorBoard({
           <b style={{ color: 'var(--c)' }}>+ CRAFT CUSTOM TRAP FOR {selectedFloor.floor}F</b>
           <span style={{ color: canAffordSlot ? 'var(--y)' : 'var(--r)', fontSize: 12 }}>
             {installCost !== null
-              ? `Cost: ${installCost} MP`
+              ? canAffordSlot
+                ? `Cost: ${installCost} MP`
+                : `Cost: ${installCost} MP · ⛔ short ${installCost - state.points} MP`
               : `Room Full (Max ${CFG.SLOTS})`}
           </span>
         </div>
@@ -891,6 +926,11 @@ export function FloorBoard({
             type="submit"
             className="dk-btn pri"
             disabled={!canAffordSlot || !customText.trim()}
+            title={
+              installCost !== null && !canAffordSlot
+                ? `Need ${installCost} MP · have ${state.points} MP (short ${installCost - state.points} MP)`
+                : undefined
+            }
           >
             Build Trap {installCost !== null ? `(-${installCost} MP)` : ''}
           </button>

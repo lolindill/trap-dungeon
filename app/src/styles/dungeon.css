@@ -906,6 +906,13 @@ select {
   cursor: not-allowed;
 }
 
+/* MP deficit badge on disabled install chips */
+.dk-mp-short {
+  color: var(--r);
+  font-weight: 700;
+  font-size: 10px;
+}
+
 /* Prep & Party Cards */
 .dk-hero-card {
   border: 1px solid var(--d);

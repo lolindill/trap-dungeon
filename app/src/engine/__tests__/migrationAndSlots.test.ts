@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CFG } from '../../data/constants';
 import { STARTER_BLUEPRINTS } from '../../data/starterBlueprints';
 import type { GameState } from '../../types/game';
 import { installBlueprintToFloor, installCustomTrap } from '../dungeon';
@@ -243,7 +244,7 @@ describe('schemaVersion 2 & Phase 1 -> v2 migration', () => {
 
     // Corrupted inputs fall back gracefully
     expect(migrateGameState(null).schemaVersion).toBe(2);
-    expect(migrateGameState('invalid').points).toBe(110);
+    expect(migrateGameState('invalid').points).toBe(CFG.START_POINTS);
     expect(migrateGameState({ floors: 'bad' }).floors).toHaveLength(7);
 
     // localStorage startup migration
@@ -369,26 +370,26 @@ describe('waveStartSnapshot capture and rewind', () => {
   it('auto-captures non-recursive snapshots at Build start and preserves them across Prep cancel', () => {
     const initial = createInitialGameState();
     expect(initial.waveStartSnapshot).not.toBeNull();
-    expect(initial.waveStartSnapshot!.points).toBe(110);
+    expect(initial.waveStartSnapshot!.points).toBe(CFG.START_POINTS);
     expect('waveStartSnapshot' in (initial.waveStartSnapshot as object)).toBe(false);
 
     // Spend MP in Build and save to Slot 1 separately
     let state = installCustomTrap(initial, 1, 'Spike Trap').state;
-    expect(state.points).toBe(60);
+    expect(state.points).toBe(CFG.START_POINTS - 50);
     saveToSlot(1, state, 'Manual Slot 1');
 
     // Cancel Prep back to Build should NOT overwrite waveStartSnapshot
     state = finishBuildPhase(state);
     state = cancelPrepBackToBuild(state);
-    expect(state.waveStartSnapshot!.points).toBe(110);
+    expect(state.waveStartSnapshot!.points).toBe(CFG.START_POINTS);
 
-    // Rewinding restores Wave 0 Build start (110 MP, empty floor) without touching Slot 1
+    // Rewinding restores Wave 0 Build start (300 MP, empty floor) without touching Slot 1
     const rewound = restoreWaveStartSnapshot(state);
     expect(rewound).not.toBeNull();
-    expect(rewound!.points).toBe(110);
+    expect(rewound!.points).toBe(CFG.START_POINTS);
     expect(rewound!.floors[0].slots).toHaveLength(0);
     expect(rewound!.waveStartSnapshot).not.toBeNull();
-    expect(loadFromSlot(1)?.points).toBe(60);
+    expect(loadFromSlot(1)?.points).toBe(CFG.START_POINTS - 50);
 
     // Full wave completion captures a fresh snapshot at start of next Build
     let run = { ...createInitialGameState(), points: 500 };

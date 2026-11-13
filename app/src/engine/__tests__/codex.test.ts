@@ -186,8 +186,8 @@ describe('Build Suggest (X.tpRoll) & ? Grade Preview', () => {
   });
 
   it('fills empty floor slots from Codex within available MP budget', () => {
-    // Starting MP (110) can afford slot #1 (50 MP) but not slot #1 + #2 (170 MP)
-    const lowState = createInitialGameState(); // 110 MP
+    // Low budget (110) can afford slot #1 (50 MP) but not slot #1 + #2 (170 MP)
+    const lowState = { ...createInitialGameState(), points: 110 };
     const lowFill = buildCodexSuggestFillBlueprint(lowState.floors[0], lowState.points, 'mix', () => 0);
     expect(lowFill.blueprint).not.toBeNull();
     expect(lowFill.trapCount).toBe(1);

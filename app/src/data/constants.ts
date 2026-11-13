@@ -45,7 +45,11 @@ export const CFG = {
   AILMENT_PENALTY: 2,
   AILMENT_MARGIN: 5,
   AILMENT_CHANCE: 0.25,
-  START_POINTS: 110,
+  // 300 = ~1.2 waves of typical MP income (harvest 70 + defense 60 + raid rewards ~75 +
+  // estate day ~55): lets Wave 0 build 2-slot synergy floors (170 MP) or cover 5-6 floors
+  // with 1 trap each, while a full 3-slot floor (390 MP) and 7-floor coverage (350 MP)
+  // stay out of reach so the Build phase keeps its scarcity pacing.
+  START_POINTS: 300,
   INCOME: 70,
   DEFENSE_BONUS: 60,
   EVAL_BONUS: { S: 80, A: 50, B: 20, C: 0, D: 0 } as Record<string, number>,

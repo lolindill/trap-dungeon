@@ -62,7 +62,7 @@ describe('assetManifest resolution', () => {
 
 describe('dungeon building & Trap Blueprint Shortcuts', () => {
   it('installs custom traps with escalating slot costs and supports upgrade/rename/refund', () => {
-    let state = createInitialGameState(); // 110 MP
+    let state = { ...createInitialGameState(), points: 110 }; // fixed budget for escalating slot costs
     expect(getInstallCost(0)).toBe(50);
     expect(getInstallCost(1)).toBe(120);
 
