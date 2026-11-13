@@ -1,0 +1,16 @@
+# Dependencies & Build Outputs
+app/node_modules/
+app/dist/
+app/tsconfig.tsbuildinfo
+*.log
+
+# Environment & OS Files
+.env
+.env.*
+.DS_Store
+Thumbs.db
+
+# Raw CharX Binary & Reference Dump (kept local only)
+CharX Embeded Jpeg.jpeg
+Ero Trap Dungeon Maker_all_chats_*.json
+_reference/

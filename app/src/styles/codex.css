@@ -1,0 +1,178 @@
+/* Original Codex, Room Shortcuts, Build Suggest & ? Preview Styles */
+
+.dk-workshop-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 2px solid var(--d);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.dk-workshop-tab {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--g);
+  padding: 5px 12px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.dk-workshop-tab:hover {
+  border-color: var(--c);
+  color: var(--w);
+}
+
+.dk-workshop-tab.active {
+  border-color: var(--y);
+  background: var(--b-dim);
+  color: var(--y);
+}
+
+.dk-codex-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--d);
+  background: var(--panel-alt);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.dk-codex-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dk-codex-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dk-codex-card {
+  border: 1px solid var(--d);
+  background: var(--panel);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.dk-codex-card.combo {
+  border-color: var(--b);
+  background: linear-gradient(180deg, rgba(200, 109, 28, 0.08), var(--panel));
+}
+
+.dk-codex-id {
+  font-size: 11px;
+  color: var(--o);
+  border: 1px solid var(--d);
+  background: var(--k);
+  padding: 1px 5px;
+  margin-right: 5px;
+}
+
+.dk-codex-counters {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--o);
+}
+
+.dk-codex-combo-link {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--c);
+}
+
+.dk-room-slots-list {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--b);
+  background: var(--k);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.dk-room-slot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dk-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--d);
+}
+
+/* FloorBoard Suggest & ? Preview */
+.dk-floor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dk-suggest-box {
+  border: 1px solid var(--c);
+  background: rgba(95, 240, 240, 0.05);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.dk-suggest-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dk-suggest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.dk-suggest-card {
+  border: 1px solid var(--d);
+  background: var(--panel);
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.dk-suggest-card.partner {
+  border-color: var(--y);
+  background: rgba(255, 228, 94, 0.06);
+}
+
+.dk-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--c);
+  border: 1px dashed var(--t);
+  background: rgba(12, 166, 166, 0.12);
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+
+.dk-badge.room {
+  border-color: var(--b);
+  color: var(--y);
+  background: var(--b-dim);
+}

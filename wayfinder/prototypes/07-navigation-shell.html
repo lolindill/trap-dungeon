@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ticket 07 Prototype — Standalone Phase 2 Navigation Shell</title>
+  <style>
+    @font-face {
+      font-family: DKGalmuri;
+      src: local('Galmuri9'), url('https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/Galmuri9.woff2') format('woff2');
+      font-display: swap;
+    }
+    @font-face {
+      font-family: DKGalmuriPC;
+      src: local('Galmuri11'), url('https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/Galmuri11.woff2') format('woff2');
+      font-display: swap;
+    }
+
+    :root {
+      --k: #070709;
+      --panel: #0c0d12;
+      --panel-alt: #12141c;
+      --g: #b6bac5;
+      --w: #f3f5fa;
+      --d: #434754;
+      --b: #c86d1c;
+      --b-dim: rgba(200, 109, 28, 0.14);
+      --y: #ffe45e;
+      --c: #5ff0f0;
+      --t: #0ca6a6;
+      --r: #ff6262;
+      --rr: #9a1818;
+      --n: #67ee77;
+      --m: #f46ae8;
+      --o: #858b9b;
+      --font-retro: DKGalmuriPC, Galmuri11, DKGalmuri, Galmuri9, ui-monospace, Consolas, Menlo, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #040406;
+      color: var(--g);
+      font-family: var(--font-retro);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      font-size: inherit;
+      line-height: inherit;
+    }
+
+    /* Prototype Controls Bar (only for Ticket 07 design review) */
+    .proto-bar {
+      background: #080a0f;
+      border-bottom: 1px dashed var(--t);
+      padding: 6px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+    }
+    .proto-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+    }
+    .proto-label {
+      color: var(--c);
+      font-weight: 700;
+      margin-right: 4px;
+      letter-spacing: 0.04em;
+    }
+    .proto-pill {
+      border: 1px solid var(--d);
+      background: var(--k);
+      color: var(--o);
+      padding: 2px 7px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .proto-pill:hover { border-color: var(--c); color: var(--w); }
+    .proto-pill.active {
+      border-color: var(--c);
+      background: rgba(95, 240, 240, 0.14);
+      color: var(--c);
+      font-weight: 700;
+    }
+    .proto-pill.warn.active {
+      border-color: var(--r);
+      background: rgba(255, 98, 98, 0.16);
+      color: var(--r);
+    }
+
+    /* Viewport simulation container */
+    .proto-stage {
+      width: 100%;
+      margin: 0 auto;
+      transition: max-width 0.18s ease;
+    }
+    .proto-stage.vp-desktop { max-width: 1440px; }
+    .proto-stage.vp-tablet {
+      max-width: 920px;
+      border-left: 1px dashed var(--d);
+      border-right: 1px dashed var(--d);
+    }
+    .proto-stage.vp-mobile {
+      max-width: 390px;
+      border-left: 2px solid var(--b);
+      border-right: 2px solid var(--b);
+    }
+
+    /* App Shell */
+    .dk-app {
+      min-height: calc(100vh - 38px);
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(circle at top right, rgba(200, 109, 28, 0.09), transparent 42%),
+        radial-gradient(circle at bottom left, rgba(95, 240, 240, 0.05), transparent 40%),
+        #040406;
+    }
+
+    /* Top Header */
+    .dk-topbar {
+      background: var(--panel);
+      border-bottom: 3px double var(--b);
+      padding: 7px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .dk-topbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 12px;
+    }
+
+    .dk-brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .dk-brand-icon {
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--b);
+      object-fit: cover;
+      image-rendering: pixelated;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .dk-brand-title {
+      color: var(--y);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .dk-brand-sub {
+      color: var(--o);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    /* Dual-row compact KPI strip */
+    .dk-kpi-dock {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      flex: 1 1 560px;
+      justify-content: center;
+    }
+
+    .dk-kpi-group {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 2px;
+      border: 1px solid rgba(67, 71, 84, 0.6);
+      background: rgba(7, 7, 9, 0.65);
+    }
+
+    .dk-kpi-group.day-group {
+      border-color: rgba(12, 166, 166, 0.45);
+    }
+
+    .dk-kpi-pill {
+      border: 1px solid var(--d);
+      background: var(--k);
+      padding: 2px 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .dk-kpi-pill span { color: var(--o); font-size: 10px; }
+    .dk-kpi-pill b { color: var(--w); }
+    .dk-kpi-pill.mp b { color: var(--y); }
+    .dk-kpi-pill.lust b { color: var(--m); }
+    .dk-kpi-pill.fear b { color: var(--r); }
+    .dk-kpi-pill.fame b { color: var(--c); }
+    .dk-kpi-pill.ap.active-ap { border-color: var(--c); background: rgba(95, 240, 240, 0.1); }
+    .dk-kpi-pill.ap.active-ap b { color: var(--c); }
+    .dk-kpi-pill.ap.locked-ap b { color: var(--o); }
+    .dk-kpi-pill.warn { border-color: var(--b); background: rgba(200, 109, 28, 0.14); }
+    .dk-kpi-pill.warn b { color: var(--y); }
+    .dk-kpi-pill.crit { border-color: var(--r); background: rgba(255, 98, 98, 0.14); animation: pulseWarn 1.6s infinite; }
+    .dk-kpi-pill.crit b { color: var(--r); }
+
+    @keyframes pulseWarn {
+      0%, 100% { box-shadow: 0 0 0 rgba(255, 98, 98, 0); }
+      50% { box-shadow: 0 0 6px rgba(255, 98, 98, 0.45); }
+    }
+
+    .dk-nav-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+    }
+
+    /* Dual Night / Day Stepper */
+    .dk-stepper-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dk-cycle-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 7px;
+      border: 1px solid var(--b);
+      background: var(--b-dim);
+      color: var(--y);
+      white-space: nowrap;
+      letter-spacing: 0.05em;
+    }
+    .dk-cycle-tag.day {
+      border-color: var(--c);
+      background: rgba(95, 240, 240, 0.12);
+      color: var(--c);
+    }
+
+    .dk-stepper {
+      flex: 1;
+      display: grid;
+      gap: 5px;
+    }
+    .dk-stepper.night-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .dk-stepper.day-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .dk-step-item {
+      border: 1px solid var(--d);
+      background: var(--k);
+      padding: 3px 8px;
+      color: var(--o);
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .dk-step-item span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dk-step-item.done { border-color: var(--t); color: var(--c); }
+    .dk-step-item.active {
+      border-color: var(--y);
+      background: rgba(255, 228, 94, 0.12);
+      color: var(--y);
+      font-weight: 700;
+    }
+    .dk-step-item.day-active {
+      border-color: var(--c);
+      background: rgba(95, 240, 240, 0.12);
+      color: var(--c);
+      font-weight: 700;
+    }
+    .dk-step-item.due-alert {
+      border-color: var(--r);
+      color: var(--r);
+    }
+
+    /* Main Workspace Grid: Preserve generous Chronicle width! */
+    .dk-workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(420px, 580px) minmax(420px, 1fr);
+      gap: 12px;
+      padding: 10px 14px;
+      max-width: 1680px;
+      width: 100%;
+      margin: 0 auto;
+      align-items: start;
+    }
+
+    @media (max-width: 1040px) {
+      .dk-workspace { grid-template-columns: 1fr; }
+    }
+    .proto-stage.vp-tablet .dk-workspace,
+    .proto-stage.vp-mobile .dk-workspace {
+      grid-template-columns: 1fr;
+    }
+
+    .dk-pane {
+      background: var(--panel);
+      border: 3px double var(--b);
+      box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.65);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .dk-pane-head {
+      background: var(--b);
+      color: #000;
+      font-weight: 700;
+      padding: 5px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    /* Persistent Top Sub-Tab Bar inside Left Pane */
+    .dk-subtabs {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      background: var(--k);
+      border-bottom: 2px solid var(--d);
+    }
+
+    .dk-subtab {
+      position: relative;
+      border: 0;
+      border-right: 1px solid var(--d);
+      background: transparent;
+      color: var(--o);
+      padding: 7px 4px 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 11px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .dk-subtab:last-child { border-right: 0; }
+    .dk-subtab:hover { background: rgba(255, 255, 255, 0.04); color: var(--w); }
+    .dk-subtab.active {
+      background: var(--panel-alt);
+      color: var(--y);
+      font-weight: 700;
+      box-shadow: inset 0 -2px 0 var(--y);
+    }
+    .dk-subtab.phase-primary:not(.active) {
+      color: var(--c);
+    }
+
+    .dk-subtab-top {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .dk-kbd {
+      font-size: 9px;
+      color: var(--d);
+      border: 1px solid var(--d);
+      padding: 0 3px;
+      line-height: 1.2;
+    }
+    .dk-subtab.active .dk-kbd {
+      color: var(--y);
+      border-color: var(--b);
+    }
+
+    .dk-tab-badge {
+      font-size: 9px;
+      padding: 0 4px;
+      border: 1px solid var(--d);
+      color: var(--o);
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+    .dk-tab-badge.info { border-color: var(--t); color: var(--c); }
+    .dk-tab-badge.warn { border-color: var(--b); color: var(--y); background: rgba(200, 109, 28, 0.16); }
+    .dk-tab-badge.crit { border-color: var(--r); color: var(--r); background: rgba(255, 98, 98, 0.16); font-weight: 700; }
+    .dk-tab-badge.star { border-color: var(--m); color: var(--m); background: rgba(244, 106, 232, 0.12); }
+
+    .dk-pane-body {
+      padding: 10px 11px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Phase Lock Banner */
+    .dk-lock-banner {
+      border: 1px dashed var(--b);
+      background: rgba(200, 109, 28, 0.08);
+      color: var(--y);
+      padding: 5px 8px;
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .dk-lock-banner.day-ready {
+      border-color: var(--t);
+      background: rgba(12, 166, 166, 0.1);
+      color: var(--c);
+    }
+
+    /* Buttons */
+    .dk-btn {
+      min-height: 32px;
+      border: 1px solid var(--g);
+      background: var(--k);
+      color: var(--g);
+      padding: 4px 9px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .dk-btn:hover:not(:disabled) { background: var(--g); color: #000; }
+    .dk-btn:disabled {
+      border-style: dashed;
+      border-color: var(--d);
+      color: var(--d);
+      cursor: not-allowed;
+      opacity: 0.72;
+    }
+    .dk-btn.sm { min-height: 26px; padding: 2px 7px; font-size: 11px; }
+    .dk-btn.pri { border-color: var(--c); background: var(--t); color: #000; font-weight: 700; }
+    .dk-btn.pri:hover:not(:disabled) { background: var(--c); }
+    .dk-btn.amber { border-color: var(--b); color: var(--y); }
+    .dk-btn.amber:hover:not(:disabled) { background: var(--b); color: #000; }
+    .dk-btn.up { border-color: var(--n); color: var(--n); }
+    .dk-btn.up:hover:not(:disabled) { background: var(--n); color: #000; }
+    .dk-btn.del { border-color: var(--r); color: var(--r); }
+    .dk-btn.del:hover:not(:disabled) { background: var(--r); color: #000; }
+    .dk-btn.mag { border-color: var(--m); color: var(--m); }
+    .dk-btn.mag:hover:not(:disabled) { background: var(--m); color: #000; }
+    .dk-btn.cta {
+      width: 100%;
+      min-height: 40px;
+      background: var(--b);
+      border: 2px solid var(--y);
+      color: #000;
+      font-weight: 700;
+      justify-content: space-between;
+      padding: 6px 11px;
+      white-space: normal;
+      text-align: left;
+    }
+    .dk-btn.cta:hover:not(:disabled) { background: var(--y); color: #000; }
+
+    .ap-chip {
+      font-size: 10px;
+      padding: 0 4px;
+      border: 1px solid currentColor;
+      opacity: 0.9;
+    }
+
+    /* Cards & Lists */
+    .dk-card {
+      border: 1px solid var(--d);
+      background: var(--panel-alt);
+      padding: 8px 9px;
+    }
+    .dk-card.alert { border-left: 4px solid var(--r); }
+    .dk-card.accent { border-left: 4px solid var(--b); }
+    .dk-card.teal { border-left: 4px solid var(--c); }
+
+    .dk-chips {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }
+    .dk-chip {
+      border: 1px solid var(--d);
+      background: var(--k);
+      color: var(--g);
+      padding: 4px 2px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 11px;
+    }
+    .dk-chip small { font-size: 9px; color: var(--o); }
+    .dk-chip.sel { background: var(--b); border-color: var(--y); color: var(--y); font-weight: 700; }
+    .dk-chip.sel small { color: #000; }
+
+    /* Master-Detail Prison Split */
+    .dk-prison-split {
+      display: grid;
+      grid-template-columns: 162px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+    }
+    @media (max-width: 560px) {
+      .dk-prison-split { grid-template-columns: 1fr; }
+    }
+    .proto-stage.vp-mobile .dk-prison-split {
+      grid-template-columns: 1fr;
+    }
+
+    .dk-prison-roster {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 440px;
+      overflow-y: auto;
+    }
+    .proto-stage.vp-mobile .dk-prison-roster {
+      flex-direction: row;
+      overflow-x: auto;
+      max-height: none;
+      padding-bottom: 4px;
+    }
+
+    .dk-cap-item {
+      border: 1px solid var(--d);
+      background: var(--k);
+      padding: 5px 7px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--g);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 132px;
+    }
+    .dk-cap-item:hover { border-color: var(--g); }
+    .dk-cap-item.sel {
+      border-color: var(--m);
+      background: rgba(244, 106, 232, 0.08);
+      color: var(--w);
+    }
+
+    .dk-mini-bar {
+      height: 5px;
+      background: #1b1e28;
+      border: 1px solid var(--d);
+      overflow: hidden;
+    }
+    .dk-mini-fill { height: 100%; background: var(--n); }
+    .dk-mini-fill.low { background: var(--r); }
+    .dk-mini-fill.lust { background: var(--m); }
+    .dk-mini-fill.amber { background: var(--y); }
+
+    /* 6 Prison Category Sub-Tabs */
+    .dk-cat-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 3px;
+    }
+    .dk-cat-tab {
+      border: 1px solid var(--d);
+      background: var(--k);
+      color: var(--o);
+      padding: 4px 4px;
+      font-size: 10px;
+      cursor: pointer;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dk-cat-tab.sel {
+      border-color: var(--c);
+      color: var(--c);
+      background: rgba(95, 240, 240, 0.1);
+      font-weight: 700;
+    }
+    .dk-cat-tab.dark.sel {
+      border-color: var(--m);
+      color: var(--m);
+      background: rgba(244, 106, 232, 0.1);
+    }
+
+    .dk-act-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+    }
+    .proto-stage.vp-mobile .dk-act-grid {
+      grid-template-columns: 1fr;
+    }
+    .dk-act-btn {
+      border: 1px solid var(--d);
+      background: var(--k);
+      color: var(--w);
+      padding: 5px 7px;
+      cursor: pointer;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+    }
+    .dk-act-btn:hover:not(:disabled) {
+      border-color: var(--y);
+      background: rgba(255, 228, 94, 0.08);
+    }
+    .dk-act-btn:disabled {
+      border-style: dashed;
+      border-color: var(--d);
+      color: var(--d);
+      cursor: not-allowed;
+    }
+    .dk-act-btn small { color: var(--o); font-size: 10px; }
+
+    /* Estate Bars & Facility Grid */
+    .dk-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .dk-fac-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+      max-height: 270px;
+      overflow-y: auto;
+    }
+    .proto-stage.vp-mobile .dk-fac-grid,
+    .proto-stage.vp-mobile .dk-stat-grid {
+      grid-template-columns: 1fr;
+    }
+
+    /* Officers Selector */
+    .dk-officer-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .dk-officer-card {
+      border: 1px solid var(--d);
+      background: var(--k);
+      padding: 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: var(--g);
+      font-size: 11px;
+    }
+    .dk-officer-card.sel {
+      border-color: var(--y);
+      background: rgba(255, 228, 94, 0.08);
+      color: var(--w);
+    }
+    .dk-officer-portrait {
+      width: 56px;
+      height: 64px;
+      object-fit: cover;
+      object-position: top center;
+      border: 1px solid var(--d);
+      background: #000;
+    }
+
+    /* Grades & Badges */
+    .dk-g {
+      display: inline-block;
+      font-weight: 700;
+      padding: 0 4px;
+      border: 1px solid currentColor;
+      font-size: 10px;
+    }
+    .dk-g-C { color: var(--n); }
+    .dk-g-B { color: var(--c); }
+    .dk-g-A { color: var(--m); }
+    .dk-g-S { color: var(--y); }
+
+    .dk-badge {
+      border: 1px solid var(--d);
+      padding: 0 5px;
+      font-size: 10px;
+      color: var(--o);
+      display: inline-block;
+    }
+    .dk-badge.c { color: var(--c); border-color: var(--t); }
+    .dk-badge.y { color: var(--y); border-color: var(--b); }
+    .dk-badge.r { color: var(--r); border-color: var(--rr); }
+    .dk-badge.m { color: var(--m); border-color: var(--m); }
+    .dk-badge.n { color: var(--n); border-color: var(--n); }
+
+    /* Chronicle Pane — Must NEVER shrink! */
+    .dk-chronicle-pane {
+      height: calc(100vh - 168px);
+      min-height: 540px;
+    }
+    .proto-stage.vp-mobile .dk-chronicle-pane,
+    .proto-stage.vp-tablet .dk-chronicle-pane {
+      height: 540px;
+    }
+
+    .dk-chronicle-feed {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .dk-entry {
+      border: 1px solid var(--d);
+      background: var(--panel-alt);
+      padding: 9px 10px;
+    }
+    .dk-entry.day { border-left: 4px solid var(--c); }
+    .dk-entry.debt { border-left: 4px solid var(--m); }
+    .dk-entry.raid { border-left: 4px solid var(--r); }
+    .dk-entry.opening { border-color: var(--b); }
+    .dk-entry-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+      padding-bottom: 4px;
+      border-bottom: 1px dashed var(--d);
+      font-size: 12px;
+    }
+    .dk-entry-title { color: var(--y); font-weight: 700; }
+    .dk-entry-banner {
+      width: 100%;
+      max-height: 170px;
+      object-fit: cover;
+      border: 1px solid var(--d);
+      margin-bottom: 7px;
+      display: block;
+    }
+    .dk-entry-prose { color: var(--w); font-size: 12px; white-space: pre-wrap; }
+
+    .dk-chat-bar {
+      border-top: 1px solid var(--d);
+      background: var(--k);
+      padding: 8px 10px;
+      display: flex;
+      gap: 6px;
+    }
+    .dk-input {
+      width: 100%;
+      background: #040406;
+      color: var(--w);
+      border: 1px solid var(--d);
+      padding: 5px 8px;
+      outline: none;
+    }
+    .dk-input:focus { border-color: var(--c); }
+
+    .dk-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .dk-wrap { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .dk-hint { color: var(--o); font-size: 11px; }
+    .dk-flash {
+      border-left: 3px solid var(--n);
+      background: rgba(103, 238, 119, 0.08);
+      color: var(--n);
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+
+    /* Mobile tweaks matching existing breakpoints */
+    .proto-stage.vp-mobile .dk-topbar { padding: 6px 8px; }
+    .proto-stage.vp-mobile .dk-workspace { padding: 8px; gap: 10px; }
+    .proto-stage.vp-mobile .dk-subtab { font-size: 10px; padding: 6px 2px; }
+    .proto-stage.vp-mobile .dk-kbd { display: none; }
+    .proto-stage.vp-mobile .dk-stepper.night-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 640px) {
+      .dk-kbd { display: none; }
+      .dk-stepper.night-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Prototype Harness Toolbar -->
+  <div class="proto-bar" role="region" aria-label="Prototype Controls">
+    <div class="proto-group">
+      <span class="proto-label">PHASE SIM:</span>
+      <button class="proto-pill" data-phase="build">1.Build</button>
+      <button class="proto-pill" data-phase="prep">2.Prep</button>
+      <button class="proto-pill" data-phase="raid">3.Raid</button>
+      <button class="proto-pill" data-phase="result">4.Result</button>
+      <button class="proto-pill active" data-phase="day">5.Day (AP)</button>
+      <button class="proto-pill" data-phase="msettle">6.M.Settle</button>
+      <button class="proto-pill" data-phase="debt">7.Debt</button>
+    </div>
+
+    <div class="proto-group">
+      <span class="proto-label">STRESS:</span>
+      <button class="proto-pill active" id="btnStressNormal">Normal</button>
+      <button class="proto-pill warn" id="btnStressCrisis">⚠ Crisis Alerts</button>
+      <button class="proto-pill" id="btnSkipDay">Skip-Day: OFF</button>
+    </div>
+
+    <div class="proto-group">
+      <span class="proto-label">VIEWPORT:</span>
+      <button class="proto-pill active" data-vp="full">Full</button>
+      <button class="proto-pill" data-vp="desktop">1440px</button>
+      <button class="proto-pill" data-vp="tablet">920px</button>
+      <button class="proto-pill" data-vp="mobile">390px</button>
+    </div>
+  </div>
+
+  <div class="proto-stage" id="protoStage">
+    <div class="dk-app">
+      <!-- HEADER BAR -->
+      <header class="dk-topbar">
+        <div class="dk-topbar-row">
+          <div class="dk-brand">
+            <img src="../../app/public/assets/icon/image/main.png" alt="Core" class="dk-brand-icon" onerror="this.style.display='none'" />
+            <div>
+              <div class="dk-brand-title">ERO TRAP DUNGEON MAKER</div>
+              <div class="dk-brand-sub">Phase 2 Shell Prototype · Hotkeys [1-5]</div>
+            </div>
+          </div>
+
+          <!-- Dual-Grouped Compact KPI Strip -->
+          <div class="dk-kpi-dock" id="kpiDock"></div>
+
+          <div class="dk-nav-actions">
+            <button type="button" class="dk-btn sm amber" onclick="flashMsg('Opened Trap Codex & Shortcuts Modal (330 presets + custom).')">Shortcuts (12)</button>
+            <button type="button" class="dk-btn sm" onclick="flashMsg('Opened Gallery & Unlocks Modal.')">Gallery</button>
+            <button type="button" class="dk-btn sm up" onclick="flashMsg('Opened Settings (Auto-Save + 5 Slots + Skip-Day toggle).')">API: Ready</button>
+          </div>
+        </div>
+
+        <!-- Dual Night / Day Header Stepper -->
+        <div class="dk-stepper-wrap" id="stepperWrap"></div>
+      </header>
+
+      <!-- TWO-PANE WORKSPACE -->
+      <main class="dk-workspace">
+        <!-- LEFT PANE: Persistent Top Sub-Tabs + Active Subsystem -->
+        <section class="dk-pane">
+          <div class="dk-pane-head">
+            <span id="leftPaneTitle">DAY ESTATE &amp; MANAGEMENT</span>
+            <span id="leftPaneRight">4/4 AP · 420 MP</span>
+          </div>
+
+          <!-- Top Sub-Tabs: 1-Click Access + Hotkeys + Badges -->
+          <nav class="dk-subtabs" aria-label="Domain Subsystems">
+            <button type="button" class="dk-subtab" data-tab="dungeon" id="tab-dungeon">
+              <span class="dk-subtab-top"><span class="dk-kbd">1</span><span>Dungeon</span></span>
+              <span class="dk-tab-badge info" id="badge-dungeon">7F · DC16</span>
+            </button>
+            <button type="button" class="dk-subtab" data-tab="prison" id="tab-prison">
+              <span class="dk-subtab-top"><span class="dk-kbd">2</span><span>Prison</span></span>
+              <span class="dk-tab-badge" id="badge-prison">4/8</span>
+            </button>
+            <button type="button" class="dk-subtab" data-tab="estate" id="tab-estate">
+              <span class="dk-subtab-top"><span class="dk-kbd">3</span><span>Estate</span></span>
+              <span class="dk-tab-badge" id="badge-estate">Lv.2 Town</span>
+            </button>
+            <button type="button" class="dk-subtab" data-tab="debt" id="tab-debt">
+              <span class="dk-subtab-top"><span class="dk-kbd">4</span><span>Debt</span></span>
+              <span class="dk-tab-badge" id="badge-debt">Due W6</span>
+            </button>
+            <button type="button" class="dk-subtab" data-tab="officers" id="tab-officers">
+              <span class="dk-subtab-top"><span class="dk-kbd">5</span><span>Officers</span></span>
+              <span class="dk-tab-badge star" id="badge-officers">★ L68</span>
+            </button>
+          </nav>
+
+          <div class="dk-pane-body" id="leftPaneBody"></div>
+        </section>
+
+        <!-- RIGHT PANE: ChroniclePanel (Unshrunk & Persistent) -->
+        <section class="dk-pane dk-chronicle-pane">
+          <div class="dk-pane-head">
+            <span>DUNGEON CHRONICLE &amp; OFFICER DESK</span>
+            <span class="dk-badge c" style="background:#000;border-color:#000;color:var(--c)" id="dayLogCount">Day Log: 2 queued</span>
+          </div>
+
+          <div class="dk-chronicle-feed" id="chronicleFeed">
+            <article class="dk-entry opening">
+              <div class="dk-entry-head">
+                <span class="dk-entry-title">Wave 4 Morning — Vesper's Ledger Report</span>
+                <span class="dk-hint">W4 · DAY</span>
+              </div>
+              <img class="dk-entry-banner" src="../../app/public/assets/other/image/dk_base_day.webp.webp" alt="Day Estate" onerror="this.style.display='none'" />
+              <div class="dk-entry-prose">Sunlight filters through the manor slit-windows as Vesper sets a silver tray beside your ledger. Four captives remain secure in the lower holding block, and Eleonora's collector carriage is scheduled in two waves.
+
+"Your Action Points await allocation, Master. Routine inspections will queue quietly into tonight's Journal—or press 'Narrate Scene Now' anytime you wish a full audience."</div>
+            </article>
+            <article class="dk-entry day">
+              <div class="dk-entry-head">
+                <span class="dk-entry-title">Queued Day Log (Deterministic)</span>
+                <span class="dk-hint">W4 · LOG</span>
+              </div>
+              <div class="dk-entry-prose" id="dayLogPreview">• [09:00] Town Tax Estimate: +82 MP (Normal Policy)
+• [10:00] Prison Regen: Captives recovered +20 Stamina.</div>
+            </article>
+          </div>
+
+          <form class="dk-chat-bar" onsubmit="event.preventDefault(); sendMockChat();">
+            <input class="dk-input" id="chatInput" placeholder="Speak with Vesper, Lilim, or Eleonora... (live RP or advice)" />
+            <button type="submit" class="dk-btn pri">Send</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const STATE = {
+      phase: 'day', // build | prep | raid | result | day | msettle | debt
+      activeTab: 'estate', // dungeon | prison | estate | debt | officers
+      skipDay: false,
+      crisis: false,
+      mp: 420,
+      wave: 4,
+      fame: 34,
+      fear: 28,
+      lust: 41,
+      mom: 2,
+      guildLv: 3,
+      ap: 4,
+      apMax: 4,
+      debt: 2480,
+      debtDueIn: 2,
+      lates: 0,
+      patience: 64,
+      food: 46,
+      order: 62,
+      app: 54,
+      selectedFloor: 1,
+      selectedPrisonerId: 'p1',
+      prisonCat: 'care', // care | interro | shame | dark | jobs | fate
+      selectedOfficer: 'V', // V | L | E
+      estateSub: 'acts', // acts | fac
+      flash: '',
+      dayLog: [
+        'Town Tax Estimate: +82 MP (Normal Policy)',
+        'Prison Regen: Captives recovered +20 Stamina.'
+      ],
+      prisoners: [
+        { id: 'p1', name: 'Seraphina', grade: 'A', role: 'Paladin', gender: 'F', stam: 88, res: 42, corr: 34, pleas: 38, terr: 18, shame: 24, marks: { obey: 1, pleas: 1, terr: 0, shame: 0 }, job: 'Unassigned', sprite: 'dk_pa_feed.webp.webp' },
+        { id: 'p2', name: 'Kaelen', grade: 'B', role: 'Ranger', gender: 'M', stam: 74, res: 24, corr: 58, pleas: 45, terr: 40, shame: 32, marks: { obey: 2, pleas: 1, terr: 1, shame: 1 }, job: 'Farmhand ★★', sprite: 'dk_pa_talk_m.webp.webp' },
+        { id: 'p3', name: 'Lyra', grade: 'S', role: 'Archmage', gender: 'F', stam: 95, res: 68, corr: 12, pleas: 10, terr: 15, shame: 8, marks: { obey: 0, pleas: 0, terr: 0, shame: 0 }, job: 'Unassigned', sprite: 'dk_pa_int.webp.webp' },
+        { id: 'p4', name: 'Mireille', grade: 'C', role: 'Rogue', gender: 'F', stam: 60, res: 8, corr: 82, pleas: 76, terr: 22, shame: 65, marks: { obey: 3, pleas: 2, terr: 0, shame: 2 }, job: 'Brothel ★★★', sprite: 'dk_pa_dress.webp.webp' }
+      ],
+      officers: {
+        V: { name: 'Vesper', role: 'Chief Butler & Warden', aff: 48, stage: 2, next: 65, sprite: 'Vesper_standing.webp.webp', perks: ['S1: +10% Sale & +15% Interro', 'S2: ptrain x1.25 + Duo Scene'], specials: ['V1: +10 Settle MP', 'V5: Rest MP x2 Today', 'V7: +1 AP Next Day'] },
+        L: { name: 'Lilim', role: 'Trap Architect & Succubus', aff: 68, stage: 3, next: 90, milestone: true, sprite: 'Lilim_smug.webp.webp', perks: ['S1: -10% Trap Upgrade', 'S2: +1 Prep Intel', 'S3: First Room DC +1'], specials: ['L3: -10% Next Upgrade', 'L5: +1 Prep Intel', 'L10: +1 All Floors DC'] },
+        E: { name: 'Eleonora', role: 'Goldreich Debt Collector', aff: 42, stage: 2, next: 65, sprite: 'Eleonora_curious.webp.webp', perks: ['S1: Debt Interest 0.8%', 'S2: Handover Credit x1.3'], specials: ['E3: -5% Next Min Due', 'E7: -5% Debt (Cycle CD)', 'E8: Waive Wave Interest'] }
+      }
+    };
+
+    const PHASE_PRIMARY_TAB = {
+      build: 'dungeon',
+      prep: 'dungeon',
+      raid: 'dungeon',
+      result: 'dungeon',
+      day: 'estate',
+      msettle: 'estate',
+      debt: 'debt'
+    };
+
+    const PHASE_TITLE = {
+      build: 'DUNGEON ARCHITECT BOARD',
+      prep: 'RECON & EVALUATION BRIEFING',
+      raid: 'LIVE INVASION TRACKER',
+      result: 'WAVE SETTLEMENT LEDGER',
+      day: 'DAY ESTATE & MANAGEMENT',
+      msettle: 'MANAGEMENT SETTLEMENT & CRISIS',
+      debt: 'ELEONORA DEBT COLLECTION DESK'
+    };
+
+    function isDayPhase() {
+      return STATE.phase === 'day';
+    }
+
+    function setPhase(phase) {
+      STATE.phase = phase;
+      STATE.activeTab = PHASE_PRIMARY_TAB[phase] || 'dungeon';
+      if (phase === 'day') STATE.ap = STATE.apMax;
+      if (phase === 'debt') STATE.debtDueIn = 0;
+      else if (!STATE.crisis) STATE.debtDueIn = 2;
+      STATE.flash = `Switched simulator to [${phase.toUpperCase()}] — auto-focused [${STATE.activeTab.toUpperCase()}] tab.`;
+      render();
+    }
+
+    function setTab(tab) {
+      STATE.activeTab = tab;
+      STATE.flash = '';
+      render();
+    }
+
+    function spendAp(label, effectsFn, narrateNow = false) {
+      if (!isDayPhase()) {
+        flashMsg(`Locked: Switch to DAY (AP) phase to spend Action Points.`);
+        return;
+      }
+      if (STATE.ap <= 0) {
+        flashMsg(`0 AP left! Click "End Day & Rest" to advance to Management Settlement.`);
+        return;
+      }
+      STATE.ap -= 1;
+      if (effectsFn) effectsFn();
+      STATE.dayLog.push(label);
+      if (narrateNow) {
+        addChronicle('day', `Live Scene: ${label}`, `Narrated immediately into Chronicle for Master (${STATE.ap}/${STATE.apMax} AP remaining).`, '../../app/public/assets/other/image/dk_act_petition.webp.webp');
+      }
+      STATE.flash = `Executed: ${label} (-1 AP). Queued to Day Log.`;
+      render();
+    }
+
+    function addChronicle(kind, title, text, banner) {
+      const feed = document.getElementById('chronicleFeed');
+      const art = document.createElement('article');
+      art.className = `dk-entry ${kind}`;
+      art.innerHTML = `
+        <div class="dk-entry-head">
+          <span class="dk-entry-title">${title}</span>
+          <span class="dk-hint">W${STATE.wave} · ${STATE.phase.toUpperCase()}</span>
+        </div>
+        ${banner ? `<img class="dk-entry-banner" src="${banner}" alt="${title}" onerror="this.style.display='none'" />` : ''}
+        <div class="dk-entry-prose">${text}</div>
+      `;
+      feed.appendChild(art);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function flashMsg(msg) {
+      STATE.flash = msg;
+      render();
+    }
+
+    function sendMockChat() {
+      const inp = document.getElementById('chatInput');
+      const v = inp.value.trim();
+      if (!v) return;
+      inp.value = '';
+      addChronicle('opening', 'Master', v);
+      addChronicle('day', 'Vesper (Officers Desk)', `"Understood, Master. I have noted '${v}' for tonight's operational briefing."`);
+    }
+
+    function endDayRest(withAi) {
+      const restMp = STATE.ap * 10;
+      STATE.mp += restMp;
+      STATE.ap = 0;
+      if (withAi) {
+        addChronicle('day', `Wave ${STATE.wave} Evening Journal (Batched AI Scene)`,
+          `Vesper closes the iron-bound ledger with a faint smile as dusk settles over the estate.\n\n[Batched ${STATE.dayLog.length} actions into 1 cohesive scene · Rest Bonus: +${restMp} MP]`,
+          '../../app/public/assets/other/image/dk_base_day.webp.webp');
+      }
+      STATE.phase = 'msettle';
+      STATE.activeTab = 'estate';
+      STATE.flash = `Day closed (+${restMp} Rest MP). Entered M.SETTLE!`;
+      render();
+    }
+
+    function renderKpis() {
+      const foodVal = STATE.crisis ? 16 : STATE.food;
+      const orderVal = STATE.crisis ? 24 : STATE.order;
+      const appVal = STATE.crisis ? 32 : STATE.app;
+      const debtDueNow = STATE.phase === 'debt' || STATE.crisis;
+      const capCount = STATE.crisis ? 8 : STATE.prisoners.length;
+
+      document.getElementById('kpiDock').innerHTML = `
+        <div class="dk-kpi-group" title="Dungeon & Core KPIs">
+          <div class="dk-kpi-pill mp"><span>MP</span><b>${STATE.mp}</b></div>
+          <div class="dk-kpi-pill"><span>WAVE</span><b>${STATE.wave}</b></div>
+          <div class="dk-kpi-pill fame"><span>FAME</span><b>${STATE.fame}</b></div>
+          <div class="dk-kpi-pill fear"><span>FEAR</span><b>${STATE.fear}</b></div>
+          <div class="dk-kpi-pill lust"><span>LUST</span><b>${STATE.lust}</b></div>
+          <div class="dk-kpi-pill"><span>MOM</span><b>+${STATE.mom}</b></div>
+          <div class="dk-kpi-pill"><span>GUILD</span><b>Lv.${STATE.guildLv}</b></div>
+          <div class="dk-kpi-pill ${capCount >= 8 ? 'warn' : ''}"><span>CAP</span><b>${capCount}/8</b></div>
+        </div>
+        <div class="dk-kpi-group day-group" title="Day, Estate & Debt KPIs">
+          <div class="dk-kpi-pill ap ${isDayPhase() ? 'active-ap' : 'locked-ap'}"><span>AP</span><b>${isDayPhase() ? `${STATE.ap}/${STATE.apMax}` : 'LOCK'}</b></div>
+          <div class="dk-kpi-pill ${debtDueNow ? 'crit' : ''}"><span>DEBT</span><b>${STATE.debt}</b></div>
+          <div class="dk-kpi-pill ${foodVal < 20 ? 'crit' : ''}"><span>FOOD</span><b>${foodVal}</b></div>
+          <div class="dk-kpi-pill ${orderVal < 30 ? 'crit' : ''}"><span>ORDER</span><b>${orderVal}</b></div>
+          <div class="dk-kpi-pill ${appVal < 40 ? 'warn' : ''}"><span>APP</span><b>${appVal}</b></div>
+        </div>
+      `;
+    }
+
+    function renderStepper() {
+      const isNight = ['build', 'prep', 'raid', 'result'].includes(STATE.phase);
+      const wrap = document.getElementById('stepperWrap');
+      if (isNight) {
+        const steps = [
+          { id: 'build', label: '1. BUILD' },
+          { id: 'prep', label: '2. PREP' },
+          { id: 'raid', label: '3. RAID' },
+          { id: 'result', label: '4. RESULT' }
+        ];
+        const idx = steps.findIndex(s => s.id === STATE.phase);
+        wrap.innerHTML = `
+          <span class="dk-cycle-tag">NIGHT CYCLE</span>
+          <div class="dk-stepper night-4">
+            ${steps.map((s, i) => `
+              <div class="dk-step-item ${s.id === STATE.phase ? 'active' : i < idx ? 'done' : ''}">
+                <span>${s.label}</span>
+                <span>${s.id === STATE.phase ? 'NOW' : i < idx ? 'OK' : '·'}</span>
+              </div>
+            `).join('')}
+          </div>
+          <span class="dk-hint" style="white-space:nowrap">${STATE.skipDay ? '⏭ Day Skipped' : '→ Day Next'}</span>
+        `;
+      } else {
+        const dueLabel = (STATE.phase === 'debt' || STATE.crisis) ? 'DUE!' : `IN ${STATE.debtDueIn}W`;
+        const steps = [
+          { id: 'day', label: `5. DAY (${STATE.ap}/${STATE.apMax} AP)` },
+          { id: 'msettle', label: '6. M.SETTLE' },
+          { id: 'debt', label: `7. DEBT [${dueLabel}]` }
+        ];
+        const idx = steps.findIndex(s => s.id === STATE.phase);
+        wrap.innerHTML = `
+          <span class="dk-cycle-tag day">DAY CYCLE</span>
+          <div class="dk-stepper day-3">
+            ${steps.map((s, i) => `
+              <div class="dk-step-item ${s.id === STATE.phase ? 'day-active' : i < idx ? 'done' : (s.id === 'debt' && STATE.crisis ? 'due-alert' : '')}">
+                <span>${s.label}</span>
+                <span>${s.id === STATE.phase ? 'NOW' : i < idx ? 'OK' : '·'}</span>
+              </div>
+            `).join('')}
+          </div>
+          <span class="dk-hint" style="white-space:nowrap">→ Build Next</span>
+        `;
+      }
+    }
+
+    function renderBadgesAndTabs() {
+      const tabs = ['dungeon', 'prison', 'estate', 'debt', 'officers'];
+      const primary = PHASE_PRIMARY_TAB[STATE.phase];
+      tabs.forEach(t => {
+        const el = document.getElementById(`tab-${t}`);
+        el.classList.toggle('active', STATE.activeTab === t);
+        el.classList.toggle('phase-primary', primary === t);
+      });
+
+      const bp = document.getElementById('badge-prison');
+      if (STATE.crisis) {
+        bp.textContent = '8/8 FULL!';
+        bp.className = 'dk-tab-badge crit';
+      } else {
+        bp.textContent = `${STATE.prisoners.length}/8`;
+        bp.className = 'dk-tab-badge info';
+      }
+
+      const be = document.getElementById('badge-estate');
+      if (STATE.phase === 'msettle' || STATE.crisis) {
+        be.textContent = STATE.phase === 'msettle' ? '! CRISIS' : 'FOOD<20!';
+        be.className = 'dk-tab-badge crit';
+      } else {
+        be.textContent = 'Lv.2 Town';
+        be.className = 'dk-tab-badge';
+      }
+
+      const bd = document.getElementById('badge-debt');
+      if (STATE.phase === 'debt' || STATE.crisis) {
+        bd.textContent = STATE.crisis ? 'LATE x1!' : 'DUE NOW';
+        bd.className = 'dk-tab-badge crit';
+      } else {
+        bd.textContent = `In ${STATE.debtDueIn}W`;
+        bd.className = 'dk-tab-badge warn';
+      }
+
+      const bo = document.getElementById('badge-officers');
+      bo.textContent = '★ L68';
+      bo.className = 'dk-tab-badge star';
+
+      document.getElementById('leftPaneTitle').textContent = PHASE_TITLE[STATE.phase];
+      document.getElementById('leftPaneRight').textContent = `${isDayPhase() ? `${STATE.ap}/${STATE.apMax} AP` : 'AP LOCKED'} · ${STATE.mp} MP`;
+      document.getElementById('dayLogCount').textContent = `Day Log: ${STATE.dayLog.length} queued`;
+      document.getElementById('dayLogPreview').textContent = STATE.dayLog.map((l, i) => `• [${String(9 + i).padStart(2, '0')}:00] ${l}`).join('\n');
+    }
+
+    function renderDungeonTab() {
+      const canBuild = STATE.phase === 'build';
+      const floors = [1, 2, 3, 4, 5, 6, 7];
+      return `
+        ${!canBuild ? `
+          <div class="dk-lock-banner">
+            <span>🔒 Floor inspection mode — editing unlocks in <b>1. BUILD</b> phase.</span>
+            <button type="button" class="dk-btn sm amber" onclick="setPhase('build')">Jump to Build</button>
+          </div>
+        ` : ''}
+        <div class="dk-chips">
+          ${floors.map(f => `
+            <button type="button" class="dk-chip ${STATE.selectedFloor === f ? 'sel' : ''}" onclick="STATE.selectedFloor=${f};render()">
+              <span>${f}F</span>
+              <small>${f === 1 ? '3/4' : f <= 3 ? '2/4' : '1/4'} · DC${17 - f}</small>
+            </button>
+          `).join('')}
+        </div>
+        <div class="dk-card accent">
+          <div class="dk-row">
+            <span><strong style="color:var(--y)">FLOOR ${STATE.selectedFloor}</strong> <span class="dk-hint">(Synergy: <span class="dk-g dk-g-B">B</span>)</span></span>
+            <span class="dk-badge y">DC ${17 - STATE.selectedFloor}</span>
+          </div>
+          <div class="dk-hint" style="margin-top:4px">1. Aphrodisiac Mist Sprinkler [B] · 2. Silk Restraint Loom [C]</div>
+          <div class="dk-wrap" style="margin-top:7px">
+            <button type="button" class="dk-btn sm pri" ${!canBuild ? 'disabled' : ''} onclick="flashMsg('Installed trap on ${STATE.selectedFloor}F')">+ Install Trap (30 MP)</button>
+            <button type="button" class="dk-btn sm amber" ${!canBuild ? 'disabled' : ''} onclick="flashMsg('Rolled random Original Codex suggestion!')">🎲 Suggest</button>
+            <button type="button" class="dk-btn sm" ${!canBuild ? 'disabled' : ''} onclick="flashMsg('Upgraded slot 1 on ${STATE.selectedFloor}F')">Upgrade (20 MP)</button>
+          </div>
+        </div>
+        ${canBuild ? `
+          <button type="button" class="dk-btn cta" onclick="setPhase('prep')">
+            <span>FINISH BUILD → ENTER PREP BRIEFING</span>
+            <span>Wave ${STATE.wave + 1} →</span>
+          </button>
+        ` : ''}
+      `;
+    }
+
+    function renderPrisonTab() {
+      const cap = STATE.prisoners.find(p => p.id === STATE.selectedPrisonerId) || STATE.prisoners[0];
+      const apDisabled = !isDayPhase() || STATE.ap <= 0;
+      const apTag = isDayPhase() ? '<span class="ap-chip">1 AP</span>' : '<span class="ap-chip">🔒 DAY</span>';
+
+      const cats = [
+        { id: 'care', label: '1.Care & Soft' },
+        { id: 'interro', label: '2.Interrogate' },
+        { id: 'shame', label: '3.Shame/Fear' },
+        { id: 'dark', label: '4.Dark/Harsh', dark: true },
+        { id: 'jobs', label: '5.Jobs/Conv' },
+        { id: 'fate', label: '6.Fate' }
+      ];
+
+      const catActions = {
+        care: [
+          { name: 'Feed Meal (pfeed)', sub: '+15 Stam, +2 Obey', ap: 1 },
+          { name: 'Talk Softly (ptalk)', sub: '-4 Resist, +3 App', ap: 1 },
+          { name: 'Rest Recovery (prest)', sub: 'Full Stam Heal (FREE)', ap: 0 },
+          { name: 'Gift / Dress (pgift)', sub: '+20% Ransom, +4 Corr', ap: 1 }
+        ],
+        interro: [
+          { name: 'Interrogate (pint)', sub: '72% Intel +1, -5 Res', ap: 1 },
+          { name: 'Conditioning (ptool)', sub: '-12 Res (Smithy)', ap: 1 },
+          { name: 'Aphrodisiac (pdrug)', sub: '+16 Pleas, -8 Res', ap: 1 },
+          { name: 'Duo w/ Officer (pduo)', sub: 'Vesper S2 · x1.25 Gain', ap: 1 }
+        ],
+        shame: [
+          { name: 'Corridor Walk (pwalk)', sub: '+14 Shame, -6 Res', ap: 1 },
+          { name: 'Public Display (pdisplay)', sub: '+18 Shame, +2 Fear', ap: 1 },
+          { name: 'Whip Discipline (pwhip)', sub: '+15 Terr, -18 Stam', ap: 1 },
+          { name: 'Threaten (pthreat)', sub: '+12 Terr, -5 Res', ap: 1 }
+        ],
+        dark: [
+          { name: 'Slave Brand (pbrand)', sub: '+5% Ransom, Mark +1', ap: 1 },
+          { name: 'Tentacle Pen (ptent)', sub: '+22 Pleas, +18 Corr', ap: 1 },
+          { name: 'Harsh Train (pxtrain)', sub: '-24 Res, ⚠ 8% Fatal', ap: 1 },
+          { name: 'Dark Ritual (pxdark)', sub: '-30 Res, ⚠ 11% Fatal', ap: 1 }
+        ],
+        jobs: [
+          { name: 'Assign: Brothel ★★★', sub: '+14 MP / +1 App / Settle', ap: 1 },
+          { name: 'Assign: Farmland ★★', sub: '+4 Food / Settle', ap: 1 },
+          { name: 'Convert → Servant', sub: 'Req Corr>=70 (Curr: '+cap.corr+')', ap: 1 },
+          { name: 'Dispatch Double Agent', sub: 'Req Obey>=3 · -1 Guild', ap: 1 }
+        ],
+        fate: [
+          { name: 'Sell Ransom (~98 MP)', sub: 'Risk: 11% Cut / 4% Esc', ap: 1 },
+          { name: 'Auction (~108 MP)', sub: '0% Risk (Market Lv.1)', ap: 1 },
+          { name: 'Execute (Fame/Fear+)', sub: '+20 MP, +8 Fear', ap: 1 },
+          { name: 'Release (-Mom/-Fear)', sub: 'Frees cell immediately', ap: 0 }
+        ]
+      };
+
+      return `
+        <div class="dk-lock-banner ${isDayPhase() ? 'day-ready' : ''}">
+          <span>${isDayPhase() ? `⚡ DAY PHASE ACTIVE — <b>${STATE.ap} AP</b> available for Prison pacts.` : '🔒 Outside DAY phase — inspect roster/stats freely; AP pacts locked.'}</span>
+          ${!isDayPhase() ? `<button type="button" class="dk-btn sm pri" onclick="setPhase('day')">Sim Day</button>` : ''}
+        </div>
+
+        <div class="dk-prison-split">
+          <!-- Master Roster -->
+          <div class="dk-prison-roster">
+            ${STATE.prisoners.map(p => `
+              <button type="button" class="dk-cap-item ${p.id === cap.id ? 'sel' : ''}" onclick="STATE.selectedPrisonerId='${p.id}';render()">
+                <div class="dk-row">
+                  <strong style="color:var(--w)">${p.name}</strong>
+                  <span class="dk-g dk-g-${p.grade}">${p.grade}</span>
+                </div>
+                <div class="dk-hint">${p.gender === 'M' ? '♂' : '♀'} ${p.role} · Res ${p.res}</div>
+                <div class="dk-mini-bar"><div class="dk-mini-fill ${p.stam < 35 ? 'low' : ''}" style="width:${p.stam}%"></div></div>
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- Detail Card -->
+          <div class="dk-card teal" style="display:flex;flex-direction:column;gap:7px">
+            <div class="dk-row">
+              <div class="dk-wrap">
+                <img src="../../app/public/assets/other/image/${cap.sprite}" alt="${cap.name}" style="width:42px;height:42px;object-fit:cover;border:1px solid var(--b);background:#000" onerror="this.style.display='none'" />
+                <div>
+                  <div><strong style="color:var(--w)">${cap.name}</strong> <span class="dk-g dk-g-${cap.grade}">${cap.grade}</span> <span class="dk-badge c">${cap.gender === 'M' ? '♂ Male' : '♀ Female'}</span></div>
+                  <div class="dk-hint">${cap.role} · Job: ${cap.job}</div>
+                </div>
+              </div>
+              <button type="button" class="dk-btn sm mag" onclick="addChronicle('day','Narrate Scene: ${cap.name}','Live chronicle scene triggered for ${cap.name} (${cap.role})!','../../app/public/assets/other/image/${cap.sprite}')">⚡ Narrate</button>
+            </div>
+
+            <!-- Compact Stats & Marks -->
+            <div class="dk-stat-grid" style="font-size:11px">
+              <div>Stam: <b>${cap.stam}/100</b><div class="dk-mini-bar"><div class="dk-mini-fill" style="width:${cap.stam}%"></div></div></div>
+              <div>Resist: <b>${cap.res}%</b><div class="dk-mini-bar"><div class="dk-mini-fill amber" style="width:${cap.res}%"></div></div></div>
+              <div>Pleasure: <b>${cap.pleas}</b><div class="dk-mini-bar"><div class="dk-mini-fill lust" style="width:${cap.pleas}%"></div></div></div>
+              <div>Corr: <b>${cap.corr}</b><div class="dk-mini-bar"><div class="dk-mini-fill lust" style="width:${cap.corr}%"></div></div></div>
+            </div>
+            <div class="dk-wrap">
+              <span class="dk-badge n">Obey ★${cap.marks.obey}</span>
+              <span class="dk-badge m">Pleas ★${cap.marks.pleas}</span>
+              <span class="dk-badge r">Terr ★${cap.marks.terr}</span>
+              <span class="dk-badge y">Shame ★${cap.marks.shame}</span>
+            </div>
+
+            <!-- 6 Category Sub-Tabs -->
+            <div class="dk-cat-tabs">
+              ${cats.map(c => `
+                <button type="button" class="dk-cat-tab ${c.dark ? 'dark' : ''} ${STATE.prisonCat === c.id ? 'sel' : ''}" onclick="STATE.prisonCat='${c.id}';render()">${c.label}</button>
+              `).join('')}
+            </div>
+
+            <div class="dk-act-grid">
+              ${catActions[STATE.prisonCat].map(a => `
+                <button type="button" class="dk-act-btn" ${a.ap > 0 && apDisabled ? 'disabled' : ''} onclick="${a.ap > 0 ? `spendAp('${cap.name}: ${a.name}')` : `flashMsg('${cap.name}: ${a.name} (0 AP)')`}">
+                  <div class="dk-row"><span>${a.name}</span>${a.ap > 0 ? apTag : '<span class="ap-chip" style="color:var(--n)">0 AP</span>'}</div>
+                  <small>${a.sub}</small>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEstateTab() {
+      const foodVal = STATE.crisis ? 16 : STATE.food;
+      const orderVal = STATE.crisis ? 24 : STATE.order;
+      const appVal = STATE.crisis ? 32 : STATE.app;
+      const apDisabled = !isDayPhase() || STATE.ap <= 0;
+      const apTag = isDayPhase() ? '<span class="ap-chip">1 AP</span>' : '<span class="ap-chip">🔒 DAY</span>';
+
+      return `
+        ${STATE.phase === 'msettle' ? `
+          <div class="dk-card alert">
+            <div class="dk-row">
+              <strong style="color:var(--r)">⚠ SETTLEMENT CRISIS EVENT</strong>
+              <span class="dk-badge r">M.SETTLE</span>
+            </div>
+            <p style="margin:6px 0;font-size:12px;color:var(--w)">Smuggler Guild Tariff Dispute — Merchants threaten to boycott the Slave Market unless pacified.</p>
+            <div class="dk-wrap">
+              <button type="button" class="dk-btn sm pri" onclick="STATE.mp-=40;setPhase('debt')">Pay 40 MP (+5 App) → Debt</button>
+              <button type="button" class="dk-btn sm del" onclick="STATE.order-=8;setPhase('build')">Crackdown (-8 Order) → Build</button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="dk-card accent">
+          <div class="dk-row">
+            <span><strong style="color:var(--y)">LV.2 VILLAGE</strong> <span class="dk-hint">Pop 184/450 · Tax ~82 MP</span></span>
+            <span class="dk-badge c">Policy: Normal</span>
+          </div>
+          <div class="dk-stat-grid" style="margin-top:6px;font-size:11px">
+            <div>Food: <b style="color:${foodVal < 20 ? 'var(--r)' : 'var(--n)'}">${foodVal}</b> ${foodVal < 20 ? '(⚠ ALL DC-1!)' : '(Safe)'}<div class="dk-mini-bar"><div class="dk-mini-fill ${foodVal < 20 ? 'low' : ''}" style="width:${foodVal}%"></div></div></div>
+            <div>Order: <b style="color:${orderVal < 30 ? 'var(--r)' : 'var(--c)'}">${orderVal}</b> ${orderVal < 30 ? '(⚠ RIOT RISK)' : '(Stable)'}<div class="dk-mini-bar"><div class="dk-mini-fill ${orderVal < 30 ? 'low' : ''}" style="width:${orderVal}%"></div></div></div>
+            <div>Approval: <b>${appVal}</b><div class="dk-mini-bar"><div class="dk-mini-fill amber" style="width:${appVal}%"></div></div></div>
+            <div>Housing / Renown: <b>58 / 28</b><div class="dk-mini-bar"><div class="dk-mini-fill" style="width:58%"></div></div></div>
+          </div>
+        </div>
+
+        <div class="dk-wrap">
+          <button type="button" class="dk-btn sm ${STATE.estateSub === 'acts' ? 'pri' : ''}" onclick="STATE.estateSub='acts';render()">Town Actions (AP)</button>
+          <button type="button" class="dk-btn sm ${STATE.estateSub === 'fac' ? 'pri' : ''}" onclick="STATE.estateSub='fac';render()">Facilities (25)</button>
+        </div>
+
+        ${STATE.estateSub === 'acts' ? `
+          <div class="dk-act-grid">
+            <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('Town Patrol (+6 Order)', ()=>STATE.order+=6)">
+              <div class="dk-row"><span>Guard Patrol</span>${apTag}</div>
+              <small>+6 Order, suppresses riots</small>
+            </button>
+            <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('Hear Petitions (+5 App)', ()=>STATE.app+=5)">
+              <div class="dk-row"><span>Hear Petitions</span>${apTag}</div>
+              <small>+5 Approval, town morale</small>
+            </button>
+            <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('Market Trade Run (+35 MP)', ()=>STATE.mp+=35)">
+              <div class="dk-row"><span>Market Trade</span>${apTag}</div>
+              <small>+35 MP, +1 Renown</small>
+            </button>
+            <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('Hold Festival (+6 App, +2 Lust)', ()=>{STATE.app+=6;STATE.lust+=2;})">
+              <div class="dk-row"><span>Pleasure Festival</span>${apTag}</div>
+              <small>-25 MP · +6 App, +2 Lust</small>
+            </button>
+          </div>
+        ` : `
+          <div class="dk-fac-grid">
+            ${[
+              ['Slave Market', 'Lv.1/3', '100 MP', 'Auction + Cut Risk -5%'],
+              ['Smithy', 'Lv.1/3', '120 MP', '-5% Trap Cost + ptool'],
+              ['Training Hall', 'Lv.1/3', '120 MP', '+20% Prison, Mark -5'],
+              ['Farmland', 'Lv.1/3', '60 MP', '+3 Food / settle'],
+              ['Watchtower', 'Lv.0/3', '70 MP', '+2 Order, -10% Breach'],
+              ['Dark Shrine', 'Lv.0/3', '100 MP', '+2 Fear, Free Punish']
+            ].map(([n, lv, cost, eff]) => `
+              <div class="dk-card" style="padding:6px 8px">
+                <div class="dk-row"><strong>${n}</strong><span class="dk-badge c">${lv}</span></div>
+                <div class="dk-hint" style="margin:2px 0 5px">${eff}</div>
+                <button type="button" class="dk-btn sm amber" onclick="flashMsg('Upgraded ${n} (-${cost})')">Build/Up (${cost})</button>
+              </div>
+            `).join('')}
+          </div>
+        `}
+
+        ${isDayPhase() ? `
+          <div class="dk-act-grid" style="margin-top:4px">
+            <button type="button" class="dk-btn pri" onclick="endDayRest(true)">End Day + AI Journal (+${STATE.ap * 10} MP)</button>
+            <button type="button" class="dk-btn amber" onclick="endDayRest(false)">Quick Rest (No API, +${STATE.ap * 10} MP)</button>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function renderDebtTab() {
+      const dueNow = STATE.phase === 'debt' || STATE.crisis;
+      return `
+        <div class="dk-card ${dueNow ? 'alert' : 'accent'}">
+          <div class="dk-row">
+            <div class="dk-wrap">
+              <img src="../../app/public/assets/other/image/Eleonora_curious.webp.webp" alt="Eleonora" style="width:42px;height:48px;object-fit:cover;object-position:top;border:1px solid var(--b)" onerror="this.style.display='none'" />
+              <div>
+                <div><strong style="color:var(--y)">ELEONORA GOLDREICH</strong> <span class="dk-badge m">Stage 2 · Aff 42</span></div>
+                <div class="dk-hint">Patience: <b>${STATE.patience}/100</b> · Late Strikes: <b style="color:${STATE.crisis ? 'var(--r)' : 'var(--n)'}">${STATE.crisis ? '1/3' : '0/3'}</b></div>
+              </div>
+            </div>
+            <button type="button" class="dk-btn sm mag" onclick="addChronicle('debt','Eleonora Collection Audience','Eleonora taps her gold-tipped pen against the ledger.','../../app/public/assets/other/image/dk_base_debt.webp.webp')">⚡ Narrate</button>
+          </div>
+          <div style="margin-top:8px;font-size:12px" class="dk-row">
+            <span>Remaining Debt: <strong style="color:var(--r)">${STATE.debt} / 3,000 MP</strong></span>
+            <span>Min Due: <strong style="color:var(--y)">120 MP</strong> (0.8%/w)</span>
+          </div>
+          <div class="dk-mini-bar" style="margin-top:4px"><div class="dk-mini-fill amber" style="width:${Math.round(((3000 - STATE.debt) / 3000) * 100)}%"></div></div>
+        </div>
+
+        <div class="dk-card">
+          <div class="dk-row"><strong>Active Commission</strong><span class="dk-badge c">+180 MP Debt Cut</span></div>
+          <div class="dk-hint" style="margin:4px 0">Deliver 1 captive with Corr ≥ 70 (Mireille qualifies!)</div>
+          <div class="dk-wrap">
+            <button type="button" class="dk-btn sm pri" onclick="STATE.debt-=180;flashMsg('Delivered Mireille for +180 MP Debt Cut & +2 Aff!')">Fulfill w/ Mireille</button>
+            <button type="button" class="dk-btn sm" onclick="STATE.mp-=100;STATE.debt-=100;flashMsg('Prepaid 100 MP toward Goldreich debt!')">Prepay 100 MP</button>
+            <button type="button" class="dk-btn sm amber" ${!dueNow ? 'disabled' : ''} onclick="flashMsg('Entertained Eleonora! -25% Min Due (-1 AP tomorrow).')">Entertain (76%)</button>
+          </div>
+        </div>
+
+        ${STATE.phase === 'debt' ? `
+          <button type="button" class="dk-btn cta" onclick="setPhase('build')">
+            <span>SETTLE INSTALLMENT &amp; PROCEED TO BUILD</span>
+            <span>Wave ${STATE.wave + 1} →</span>
+          </button>
+        ` : ''}
+      `;
+    }
+
+    function renderOfficersTab() {
+      const off = STATE.officers[STATE.selectedOfficer];
+      const apDisabled = !isDayPhase() || STATE.ap <= 0;
+      const apTag = isDayPhase() ? '<span class="ap-chip">1 AP</span>' : '<span class="ap-chip">🔒 DAY</span>';
+      return `
+        <div class="dk-officer-row">
+          ${Object.entries(STATE.officers).map(([k, o]) => `
+            <button type="button" class="dk-officer-card ${STATE.selectedOfficer === k ? 'sel' : ''}" onclick="STATE.selectedOfficer='${k}';render()">
+              <img src="../../app/public/assets/other/image/${o.sprite}" alt="${o.name}" class="dk-officer-portrait" onerror="this.style.display='none'" />
+              <strong>${o.name}</strong>
+              <span class="dk-hint">S${o.stage} · Aff ${o.aff} ${o.milestone ? '★' : ''}</span>
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="dk-card teal">
+          <div class="dk-row">
+            <div><strong style="color:var(--y)">${off.name.toUpperCase()}</strong> <span class="dk-hint">· ${off.role}</span></div>
+            <button type="button" class="dk-btn sm mag" onclick="addChronicle('day','Private Scene: ${off.name}','Triggered ${off.name} Stage ${off.stage} audience in Chronicle.')">⚡ Narrate</button>
+          </div>
+          <div style="margin:6px 0;font-size:11px">
+            Affinity: <b>${off.aff}/${off.next}</b> (Next Stage Milestone!)
+            <div class="dk-mini-bar" style="margin-top:3px"><div class="dk-mini-fill lust" style="width:${Math.round((off.aff / off.next) * 100)}%"></div></div>
+          </div>
+          <div class="dk-wrap" style="margin-bottom:7px">
+            ${off.perks.map(pk => `<span class="dk-badge n">${pk}</span>`).join('')}
+          </div>
+          <div class="dk-act-grid">
+            <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('Spend Time w/ ${off.name} (+3 Aff)', ()=>STATE.officers['${STATE.selectedOfficer}'].aff+=3)">
+              <div class="dk-row"><span>Spend Time</span>${apTag}</div>
+              <small>+2..4 Affinity + Dialogue</small>
+            </button>
+            <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('Gift ${off.name} (-40 MP, +4 Aff)', ()=>{STATE.mp-=40;STATE.officers['${STATE.selectedOfficer}'].aff+=4;})">
+              <div class="dk-row"><span>Give Gift (40 MP)</span>${apTag}</div>
+              <small>+4 Affinity (Flat)</small>
+            </button>
+            ${off.specials.map(sp => `
+              <button type="button" class="dk-act-btn" ${apDisabled ? 'disabled' : ''} onclick="spendAp('${off.name} Special: ${sp}')">
+                <div class="dk-row"><span>${sp.split(':')[0]}</span>${apTag}</div>
+                <small>${sp.split(':')[1]}</small>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function render() {
+      renderKpis();
+      renderStepper();
+      renderBadgesAndTabs();
+
+      const body = document.getElementById('leftPaneBody');
+      let content = '';
+      if (STATE.activeTab === 'dungeon') content = renderDungeonTab();
+      else if (STATE.activeTab === 'prison') content = renderPrisonTab();
+      else if (STATE.activeTab === 'estate') content = renderEstateTab();
+      else if (STATE.activeTab === 'debt') content = renderDebtTab();
+      else if (STATE.activeTab === 'officers') content = renderOfficersTab();
+
+      body.innerHTML = (STATE.flash ? `<div class="dk-flash">${STATE.flash}</div>` : '') + content;
+
+      document.querySelectorAll('[data-phase]').forEach(b => b.classList.toggle('active', b.dataset.phase === STATE.phase));
+    }
+
+    // Bind Prototype Toolbar
+    document.querySelectorAll('[data-phase]').forEach(btn => {
+      btn.addEventListener('click', () => setPhase(btn.dataset.phase));
+    });
+    document.querySelectorAll('.dk-subtab').forEach(btn => {
+      btn.addEventListener('click', () => setTab(btn.dataset.tab));
+    });
+    document.getElementById('btnStressNormal').addEventListener('click', () => {
+      STATE.crisis = false;
+      document.getElementById('btnStressNormal').classList.add('active');
+      document.getElementById('btnStressCrisis').classList.remove('active');
+      render();
+    });
+    document.getElementById('btnStressCrisis').addEventListener('click', () => {
+      STATE.crisis = true;
+      document.getElementById('btnStressCrisis').classList.add('active');
+      document.getElementById('btnStressNormal').classList.remove('active');
+      render();
+    });
+    document.getElementById('btnSkipDay').addEventListener('click', (e) => {
+      STATE.skipDay = !STATE.skipDay;
+      e.target.textContent = `Skip-Day: ${STATE.skipDay ? 'ON' : 'OFF'}`;
+      e.target.classList.toggle('active', STATE.skipDay);
+      render();
+    });
+    document.querySelectorAll('[data-vp]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-vp]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const st = document.getElementById('protoStage');
+        st.className = 'proto-stage' + (btn.dataset.vp !== 'full' ? ` vp-${btn.dataset.vp}` : '');
+      });
+    });
+
+    // Keyboard Hotkeys 1..5 (ignored inside inputs)
+    window.addEventListener('keydown', (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      const map = { '1': 'dungeon', '2': 'prison', '3': 'estate', '4': 'debt', '5': 'officers' };
+      if (map[e.key]) {
+        e.preventDefault();
+        setTab(map[e.key]);
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

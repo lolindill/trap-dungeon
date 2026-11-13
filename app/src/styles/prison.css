@@ -1,0 +1,353 @@
+/* Prison Master-Detail Suite (Ticket 04) */
+
+.dk-prison-split {
+  display: grid;
+  grid-template-columns: 182px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+@media (max-width: 520px) {
+  .dk-prison-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Left Roster */
+.dk-prison-roster {
+  border: 1px solid var(--d);
+  background: var(--k);
+  display: flex;
+  flex-direction: column;
+  max-height: 680px;
+  overflow-y: auto;
+}
+
+.dk-prison-roster-head {
+  padding: 5px 7px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--d);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--y);
+  font-weight: 700;
+}
+
+.dk-roster-item {
+  border: 0;
+  border-bottom: 1px solid rgba(67, 71, 84, 0.55);
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--g);
+  padding: 6px 7px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.dk-roster-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dk-roster-item.sel {
+  border-left-color: var(--c);
+  background: rgba(95, 240, 240, 0.09);
+  color: var(--w);
+}
+
+.dk-roster-item.dying {
+  border-left-color: var(--r);
+}
+
+.dk-roster-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+
+.dk-roster-name {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--w);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dk-roster-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--o);
+}
+
+.dk-gender-badge {
+  font-size: 10px;
+  padding: 0 4px;
+  border: 1px solid var(--d);
+  line-height: 1.3;
+}
+
+.dk-gender-badge.f {
+  color: var(--m);
+  border-color: rgba(244, 106, 232, 0.45);
+}
+
+.dk-gender-badge.m {
+  color: var(--c);
+  border-color: rgba(95, 240, 240, 0.45);
+}
+
+.dk-mark-mini-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  font-size: 9px;
+}
+
+.dk-mark-pill {
+  border: 1px solid var(--d);
+  padding: 0 3px;
+  color: var(--o);
+  line-height: 1.3;
+}
+
+.dk-mark-pill.obey { color: var(--n); border-color: rgba(103, 238, 119, 0.5); }
+.dk-mark-pill.pleasure { color: var(--m); border-color: rgba(244, 106, 232, 0.5); }
+.dk-mark-pill.terror { color: var(--r); border-color: rgba(255, 98, 98, 0.5); }
+.dk-mark-pill.shame { color: var(--y); border-color: rgba(255, 228, 94, 0.5); }
+
+/* Right Detail Card */
+.dk-prison-detail {
+  border: 1px solid var(--d);
+  border-left: 4px solid var(--c);
+  background: var(--panel-alt);
+  padding: 8px 9px;
+  min-width: 0;
+}
+
+.dk-prison-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.dk-prison-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 7px;
+  font-size: 10px;
+  margin-bottom: 7px;
+}
+
+@media (max-width: 460px) {
+  .dk-prison-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.dk-mini-fill.fear {
+  background: var(--r);
+}
+
+.dk-mini-fill.cyan {
+  background: var(--c);
+}
+
+/* Scene Feedback + Narrate Now */
+.dk-prison-feedback {
+  border: 1px solid var(--t);
+  background: rgba(12, 166, 166, 0.08);
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dk-prison-feedback.key {
+  border-color: var(--y);
+  background: rgba(255, 228, 94, 0.08);
+}
+
+.dk-prison-art {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--b);
+  background: #000;
+  flex-shrink: 0;
+}
+
+.dk-prison-feedback-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 6 Category Sub-Tabs */
+.dk-prison-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.dk-prison-tab {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--o);
+  padding: 4px 5px;
+  font-size: 10px;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dk-prison-tab:hover {
+  color: var(--w);
+  border-color: var(--g);
+}
+
+.dk-prison-tab.active {
+  border-color: var(--y);
+  background: rgba(255, 228, 94, 0.14);
+  color: var(--y);
+  font-weight: 700;
+}
+
+/* Action Grid & Harsh Badges */
+.dk-prison-act-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+@media (max-width: 440px) {
+  .dk-prison-act-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dk-act-btn.harsh {
+  border-color: rgba(255, 98, 98, 0.55);
+}
+
+.dk-act-btn.harsh:hover:not(:disabled) {
+  border-color: var(--r);
+  background: rgba(255, 98, 98, 0.12);
+}
+
+.dk-hz-tag {
+  color: var(--r);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dk-context-pickers {
+  border: 1px dashed var(--d);
+  background: var(--k);
+  padding: 5px 7px;
+  margin-bottom: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 10px;
+}
+
+.dk-select {
+  background: var(--panel);
+  color: var(--w);
+  border: 1px solid var(--d);
+  padding: 2px 5px;
+  font-size: 11px;
+}
+
+/* Jobs & Conversions */
+.dk-job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 310px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.dk-job-row {
+  border: 1px solid var(--d);
+  background: var(--k);
+  padding: 5px 7px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.dk-job-row.assigned {
+  border-color: var(--n);
+  background: rgba(103, 238, 119, 0.08);
+}
+
+.dk-job-row.locked {
+  opacity: 0.65;
+}
+
+.dk-apt-stars {
+  color: var(--y);
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+
+.dk-sec-title {
+  color: var(--c);
+  font-size: 11px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+  border-bottom: 1px dotted var(--d);
+  padding-bottom: 2px;
+}
+
+/* Fate Cards */
+.dk-buyer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.dk-buyer-card {
+  border: 1px solid var(--d);
+  background: var(--k);
+  padding: 5px 7px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--g);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.dk-buyer-card:hover:not(:disabled) {
+  border-color: var(--y);
+}
+
+.dk-buyer-card.best {
+  border-color: var(--n);
+}

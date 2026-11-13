@@ -1,0 +1,236 @@
+/* Monster Pen, Eggs, Floor Guards & Adjacent Links Styles */
+
+.dk-pen-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dk-pen-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel-alt);
+  border: 1px solid var(--b);
+  border-radius: 6px;
+}
+
+.dk-pen-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dk-pen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 10px;
+}
+
+.dk-pen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--b);
+  border-radius: 6px;
+}
+
+.dk-pen-card.is-variant {
+  border-color: var(--m);
+}
+
+.dk-pen-card.is-hurt {
+  border-color: var(--o);
+}
+
+.dk-pen-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dk-pen-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--y);
+}
+
+.dk-pen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.dk-pen-xpbar {
+  position: relative;
+  height: 12px;
+  background: var(--k);
+  border: 1px solid var(--b-dim);
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 10px;
+  color: var(--w);
+  text-align: center;
+}
+
+.dk-pen-xpfill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--c);
+  opacity: 0.35;
+}
+
+.dk-pen-xplabel {
+  position: relative;
+  z-index: 1;
+}
+
+.dk-pen-panel {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--panel-alt);
+  border: 1px dashed var(--b-dim);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.dk-egg-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dk-egg-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--b);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+/* FloorBoard Inline Guards & Adjacent Links */
+
+.dk-link-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 5px 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--b-dim);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.dk-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--c);
+  color: var(--c);
+  background: rgba(92, 200, 255, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dk-link-pill {
+  display: inline-block;
+  margin-left: 2px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--c);
+  color: var(--c);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.dk-guard-box {
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--b);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dk-guard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dk-guard-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--panel-alt);
+  border: 1px solid var(--b-dim);
+  border-radius: 4px;
+}
+
+.dk-guard-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--b-dim);
+}
+
+.dk-pref-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--n);
+  color: var(--n);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dk-betray-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--r);
+  color: var(--r);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dk-warn-banner {
+  padding: 7px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--o);
+  background: rgba(255, 160, 60, 0.1);
+  color: var(--o);
+  font-size: 12px;
+}

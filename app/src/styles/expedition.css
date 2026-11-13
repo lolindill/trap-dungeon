@@ -1,0 +1,211 @@
+/* Expedition Launcher & 3 AP/day Mini-Map Panel */
+
+.dk-exp-len-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 640px) {
+  .dk-exp-len-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dk-exp-len-card {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--g);
+  padding: 7px 9px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dk-exp-len-card:hover:not(:disabled) {
+  border-color: var(--c);
+  color: var(--w);
+}
+
+.dk-exp-len-card.sel {
+  border-color: var(--y);
+  background: var(--b-dim);
+  color: var(--w);
+}
+
+.dk-exp-len-card.locked {
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.dk-exp-crew-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+@media (max-width: 600px) {
+  .dk-exp-crew-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dk-exp-crew-card {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--g);
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dk-exp-crew-card.sel {
+  border-color: var(--n);
+  background: rgba(103, 238, 119, 0.08);
+  color: var(--w);
+}
+
+.dk-exp-crew-card:disabled {
+  border-style: dashed;
+  color: var(--d);
+  cursor: not-allowed;
+}
+
+.dk-exp-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 5px 7px;
+  background: var(--k);
+  border: 1px solid var(--d);
+  font-size: 11px;
+}
+
+.dk-exp-node {
+  padding: 2px 6px;
+  border: 1px solid var(--d);
+  color: var(--o);
+}
+
+.dk-exp-node.visited {
+  border-color: var(--t);
+  color: var(--c);
+}
+
+.dk-exp-node.current {
+  border-color: var(--y);
+  background: var(--b-dim);
+  color: var(--y);
+  font-weight: 700;
+}
+
+.dk-exp-fork-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 640px) {
+  .dk-exp-fork-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dk-exp-fork-btn {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--w);
+  padding: 7px 8px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dk-exp-fork-btn:hover:not(:disabled) {
+  border-color: var(--c);
+  background: rgba(95, 240, 240, 0.08);
+}
+
+.dk-exp-fork-btn.danger {
+  border-color: rgba(255, 98, 98, 0.65);
+}
+
+.dk-exp-fork-btn.dest {
+  border-color: var(--y);
+  background: rgba(255, 228, 94, 0.07);
+}
+
+.dk-exp-fork-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dk-exp-event-card {
+  border: 2px solid var(--m);
+  background: rgba(244, 106, 232, 0.08);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.dk-exp-event-card.deep {
+  border-color: var(--y);
+  background: rgba(255, 228, 94, 0.09);
+}
+
+.dk-exp-enc-card {
+  border: 2px solid var(--r);
+  background: rgba(154, 24, 24, 0.14);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.dk-exp-stop-banner {
+  border: 1px solid var(--y);
+  background: rgba(255, 228, 94, 0.12);
+  color: var(--y);
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dk-exp-log {
+  max-height: 185px;
+  overflow-y: auto;
+  border: 1px solid var(--d);
+  background: var(--k);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.dk-exp-log-line {
+  border-left: 2px solid var(--d);
+  padding-left: 6px;
+}
+
+.dk-exp-log-line.beat {
+  border-left-color: var(--y);
+  color: var(--w);
+  background: rgba(255, 228, 94, 0.06);
+}
+
+.dk-exp-relic-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}

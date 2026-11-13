@@ -1,0 +1,220 @@
+/* Estate, Debt & Officers Subsystem Panels */
+
+.dk-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--d);
+}
+
+.dk-subnav-btn {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--g);
+  padding: 4px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dk-subnav-btn:hover {
+  border-color: var(--c);
+  color: var(--w);
+}
+
+.dk-subnav-btn.active {
+  border-color: var(--y);
+  background: var(--b-dim);
+  color: var(--y);
+  font-weight: 700;
+}
+
+.dk-est-hero {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.dk-est-thumb {
+  width: 84px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--b);
+  background: #000;
+  flex-shrink: 0;
+}
+
+.dk-fac-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .dk-fac-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dk-fac-card {
+  border: 1px solid var(--d);
+  background: var(--k);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dk-fac-card.built {
+  border-left: 3px solid var(--n);
+}
+
+.dk-fac-head {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.dk-fac-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border: 1px solid var(--d);
+  background: #000;
+  flex-shrink: 0;
+}
+
+.dk-loc-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.dk-loc-pill {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--w);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dk-loc-pill:hover:not(:disabled) {
+  border-color: var(--c);
+  background: rgba(95, 240, 240, 0.08);
+}
+
+.dk-loc-pill:disabled {
+  border-style: dashed;
+  color: var(--d);
+  cursor: not-allowed;
+}
+
+.dk-scene-banner {
+  width: 100%;
+  max-height: 170px;
+  object-fit: cover;
+  border: 1px solid var(--b);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.dk-crisis-card {
+  border: 2px solid var(--r);
+  background: rgba(154, 24, 24, 0.14);
+  padding: 9px 10px;
+  margin-bottom: 8px;
+}
+
+.dk-ia-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+@media (max-width: 600px) {
+  .dk-ia-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dk-ia-btn {
+  border: 1px solid var(--d);
+  background: var(--k);
+  color: var(--w);
+  padding: 6px 8px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dk-ia-btn.star {
+  border-color: var(--m);
+}
+
+.dk-ia-btn:hover:not(:disabled) {
+  border-color: var(--y);
+  background: rgba(255, 228, 94, 0.08);
+}
+
+.dk-ia-btn:disabled {
+  border-style: dashed;
+  border-color: var(--d);
+  color: var(--d);
+  cursor: not-allowed;
+}
+
+.dk-ia-btn small {
+  color: var(--o);
+  font-size: 10px;
+}
+
+.dk-perk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.dk-perk-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 5px;
+  border-left: 2px solid var(--d);
+  color: var(--o);
+}
+
+.dk-perk-item.unlocked {
+  border-left-color: var(--n);
+  color: var(--w);
+  background: rgba(103, 238, 119, 0.05);
+}
+
+.dk-debt-pay-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.dk-debt-input {
+  width: 96px;
+  background: #040406;
+  color: var(--w);
+  border: 1px solid var(--d);
+  padding: 4px 6px;
+  font-size: 12px;
+}
