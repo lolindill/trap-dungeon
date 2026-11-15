@@ -441,3 +441,53 @@ describe('raidMods seam — consumption sites', () => {
     expect(joined).toContain('expedition:');
   });
 });
+
+// Ticket 18: Lilim officer-side prep intel now enters through the resolver.
+describe('raidMods seam — ticket 18 Lilim prep intel source', () => {
+  it('adds Lilim stage-2 / prepIntelOnce prep intel inside the resolver (DC untouched)', () => {
+    const s = freshState();
+    s.officers.lilim.stage = 2; // +1 prep intel
+    const r = resolveRaidModifiers(s, CTX);
+    expect(r.prepIntelDelta).toBe(1);
+    expect(r.notes).toContain('lilim:prepIntel +1');
+    // The intel leak is NOT a DC source.
+    expect(r.totalDcDelta).toBe(0);
+
+    const withPerk = freshState();
+    withPerk.officers.lilim.stage = 2;
+    withPerk.estate.perks.prepIntelOnce = true; // +1
+    expect(resolveRaidModifiers(withPerk, CTX).prepIntelDelta).toBe(2);
+
+    // Stage < 2 without the perk contributes nothing (unchanged neutral path).
+    const neutral = freshState();
+    neutral.officers.lilim.stage = 1;
+    expect(resolveRaidModifiers(neutral, CTX).prepIntelDelta).toBe(0);
+  });
+
+  it('merges Lilim intel with estate + crisis intel and gates everything behind intel_zero', () => {
+    const s = freshState();
+    s.officers.lilim.stage = 2; // lilim +1
+    s.town.approval = 80; // estate +1
+    withMods(s, [{ key: 'intel', value: 2 }]);
+    const r = resolveRaidModifiers(s, CTX);
+    expect(r.prepIntelDelta).toBe(4);
+    expect(r.notes).toContain('lilim:prepIntel +1');
+
+    const sZero = freshState();
+    sZero.officers.lilim.stage = 2;
+    sZero.relics.owned.push('lens');
+    withMods(sZero, [{ key: 'intel_zero', value: 1 }]);
+    const rZero = resolveRaidModifiers(sZero, CTX);
+    expect(rZero.prepIntelZero).toBe(true);
+    expect(rZero.prepIntelDelta).toBe(0);
+  });
+
+  it('raises party intel at the workflow prep site via the Lilim leak (Lens pattern)', () => {
+    let s = freshState();
+    s.officers.lilim.stage = 2;
+    s.points = 500;
+    s = finishBuildPhase(s);
+    expect(s.party).toHaveLength(3);
+    expect(s.party.every((h) => h.intel === 1)).toBe(true);
+  });
+});

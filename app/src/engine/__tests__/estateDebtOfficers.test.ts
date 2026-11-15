@@ -8,6 +8,7 @@ import {
   SETTLEMENT_CRISES,
 } from '../../data/estateData';
 import type { ExploreEffectSpec } from '../../data/estateData';
+import { LANDMARK_DEFS, WONDER_DEFS } from '../../data/realmData';
 import type { Prisoner, RelicKey } from '../../types/game';
 import { calcRestMp, finishManagementSettle, startNewDay } from '../dayLoop';
 import {
@@ -29,14 +30,19 @@ import {
   startOrProgressGraceQuest,
   takeExtraLoan,
 } from '../debt';
+import { installCustomTrap, upgradeTrapOnFloor } from '../dungeon';
 import {
   applyManagementSettle,
+  buildLandmark,
   buildOrUpgradeFacility,
+  buildWonder,
   calcPopCap,
   calcTownTax,
   computeManagementSettle,
   EVENT_MP_PAYOUT_CAP,
   exploreTown,
+  getEstateBuildCost,
+  getFacilityUpgradeState,
   getNextTownLevelInfo,
   performTownAction,
   resolveExploreEvent,
@@ -799,5 +805,120 @@ describe('Ticket 25: Income-Scaled Min Due, Softened Late Strike, Handover Affin
     const lines =
       (finished.expedition as RichExpeditionState).lastSummary?.lootLines ?? [];
     expect(lines.join(' | ')).toContain('smelted from surplus Shards');
+  });
+});
+
+// Ticket 18: Lilim upgrade discount + estate buildCostMult install wiring
+describe('Ticket 18: Trap Upgrade Discount & Estate buildCostMult Installs', () => {
+  function makeRatedTrapState(points: number) {
+    let state = makeDayState({ mode: 'build', points });
+    state = installCustomTrap(state, 1, 'Discount probe').state;
+    const floors = state.floors.map((f, i) =>
+      i === 0
+        ? { ...f, slots: f.slots.map((s) => ({ ...s, grade: 'C' as const })) }
+        : f
+    );
+    return { ...state, floors };
+  }
+
+  it('charges the Lilim S1 discounted upgrade cost and updates flash / mpInvested', () => {
+    const state = makeRatedTrapState(500);
+    const lilimS1 = {
+      ...state,
+      officers: {
+        ...state.officers,
+        lilim: { ...state.officers.lilim, stage: 1 },
+      },
+    };
+    // C -> B base 120 MP, Lilim S1 cut 10% -> floor(120 * 0.9) = 108
+    const res = upgradeTrapOnFloor(lilimS1, 1, 0);
+    expect(res.ok).toBe(true);
+    expect(res.state.points).toBe(500 - 50 - 108);
+    expect(res.message).toBe('1F upgraded C → B · -108 MP');
+    expect(res.state.flash).toBe('1F upgraded C → B · -108 MP');
+    expect(res.state.floors[0].slots[0].grade).toBe('B');
+    expect(res.state.floors[0].slots[0].mpInvested).toBe(50 + 108);
+
+    // Insufficient-MP message quotes the DISCOUNTED price, not the base.
+    const poor = { ...lilimS1, points: 100 };
+    const denied = upgradeTrapOnFloor(poor, 1, 0);
+    expect(denied.ok).toBe(false);
+    expect(denied.message).toBe('Need 108 MP to upgrade to B.');
+
+    // Discount stacks: stage 1 (-0.10) + trapUpgradeCut (-0.10) + smithy 2 (-0.10)
+    // -> multiplier 0.70 -> floor(120 * 0.7) = 84
+    const stacked = {
+      ...lilimS1,
+      estate: {
+        ...lilimS1.estate,
+        facilities: { ...lilimS1.estate.facilities, smithy: 2 },
+        perks: { ...lilimS1.estate.perks, trapUpgradeCut: true },
+      },
+    };
+    const resStacked = upgradeTrapOnFloor(stacked, 1, 0);
+    expect(resStacked.ok).toBe(true);
+    expect(resStacked.state.points).toBe(500 - 50 - 84);
+    expect(resStacked.message).toBe('1F upgraded C → B · -84 MP');
+  });
+
+  it('scales facility / landmark / wonder install costs by buildCostMult', () => {
+    const dairyRaw = FACILITIES.find((f) => f.key === 'dairy')!.costs[0];
+
+    // Default town (order 60, housing 50) -> mult 1.0: baseline unchanged.
+    const base = makeDayState({ points: 5000 });
+    expect(getFacilityUpgradeState(base, 'dairy').cost).toBe(dairyRaw);
+    const built = buildOrUpgradeFacility(base, 'dairy');
+    expect(built.ok).toBe(true);
+    expect(base.points - built.state.points).toBe(dairyRaw);
+    expect(built.message).toContain(`-${dairyRaw} MP`);
+
+    // Low order (< 20) -> 1.2 penalty; display, affordability gate and charge agree.
+    const lowOrderCost = Math.floor(dairyRaw * 1.2);
+    const lowOrder = makeDayState({ points: 5000, town: { ...base.town, order: 15 } });
+    expect(getFacilityUpgradeState(lowOrder, 'dairy').cost).toBe(lowOrderCost);
+    const penalized = buildOrUpgradeFacility(lowOrder, 'dairy');
+    expect(penalized.ok).toBe(true);
+    expect(lowOrder.points - penalized.state.points).toBe(lowOrderCost);
+    expect(penalized.message).toContain(`-${lowOrderCost} MP`);
+
+    const tight = makeDayState({
+      points: lowOrderCost - 1,
+      town: { ...base.town, order: 15 },
+    });
+    const denied = buildOrUpgradeFacility(tight, 'dairy');
+    expect(denied.ok).toBe(false);
+    expect(denied.message).toContain(`Need ${lowOrderCost} MP`);
+
+    // Housing >= 80 (order fine) -> 1.0 - 0.08 = 0.92 reward.
+    const cozyCost = Math.floor(dairyRaw * 0.92);
+    const cozy = makeDayState({ points: 5000, town: { ...base.town, housing: 80 } });
+    expect(getFacilityUpgradeState(cozy, 'dairy').cost).toBe(cozyCost);
+
+    // Landmark installs scale too (charge + flash text consistent).
+    const lmExpected = Math.floor(LANDMARK_DEFS.hq.cost * 1.2);
+    const lmTown = makeDayState({
+      points: 99999,
+      town: { ...base.town, lv: 6, order: 15 },
+    });
+    const lm = buildLandmark(lmTown, 'hq');
+    expect(lm.ok).toBe(true);
+    expect(lmTown.points - lm.state.points).toBe(lmExpected);
+    expect(lm.message).toContain(`-${lmExpected} MP`);
+
+    // Great Wonder commissions scale as well.
+    const wExpected = Math.floor(WONDER_DEFS.spire.cost * 1.2);
+    const wTown = makeDayState({
+      points: 99999,
+      ap: 3,
+      town: { ...base.town, order: 15 },
+    });
+    const w = buildWonder(wTown, 'spire');
+    expect(w.ok).toBe(true);
+    expect(wTown.points - w.state.points).toBe(wExpected);
+    expect(w.message).toContain(`-${wExpected} MP`);
+
+    // Helper sanity: rounding rule is floor via getEstateBuildCost.
+    expect(getEstateBuildCost(base, 101)).toBe(101); // mult 1.0
+    expect(getEstateBuildCost(lowOrder, 101)).toBe(121); // 101 * 1.2 = 121.2
   });
 });

@@ -27,6 +27,7 @@ import type {
 } from '../types/game';
 import { heroGradeIndex } from './heroes';
 import { isMonsterDeployed, isMonsterHurt } from './monsters';
+import { getTrapUpgradeDiscountMultiplier } from './officers';
 import { resolveRaidModifiers } from './raidMods';
 import { clamp, uid } from './rng';
 
@@ -541,10 +542,15 @@ export function upgradeTrapOnFloor(
     return { state, ok: false, message: 'Unrated traps must be graded in Prep (or via Shortcut) before upgrading.' };
   }
   const nextGrade = getNextGrade(slot.grade);
-  const cost = getUpgradeCost(slot.grade);
-  if (!nextGrade || cost === undefined || cost === null) {
+  const baseCost = getUpgradeCost(slot.grade);
+  if (!nextGrade || baseCost === undefined || baseCost === null) {
     return { state, ok: false, message: 'Already at maximum grade (SSS).' };
   }
+  // Ticket 18: Lilim S1 / trapUpgradeCut perk / smithy levels discount the
+  // upgrade price. Rounded DOWN (consistent with the 50% dismantle refund);
+  // with the current cost table (multiples of 20) and 0.05-step multiplier
+  // the result is always an exact integer.
+  const cost = Math.floor(baseCost * getTrapUpgradeDiscountMultiplier(state));
   if (state.points < cost) {
     return { state, ok: false, message: `Need ${cost} MP to upgrade to ${nextGrade}.` };
   }

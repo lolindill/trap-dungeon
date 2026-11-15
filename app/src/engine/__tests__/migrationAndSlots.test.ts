@@ -455,3 +455,51 @@ describe('waveStartSnapshot capture and rewind', () => {
     expect('waveStartSnapshot' in (directSnap as object)).toBe(false);
   });
 });
+
+// Ticket 18: Economist migration contract — clamp unbounded legacy
+// expedition aftereffect stacks on load (max 3 active, wavesLeft <= 3).
+describe('Ticket 18: legacy expedition aftereffects clamp on load', () => {
+  function rawWithAfterEffects(afterEffects: { key: string; wavesLeft: number }[]): unknown {
+    const state = JSON.parse(JSON.stringify(createInitialGameState()));
+    state.expedition = {
+      ...state.expedition,
+      afterEffects,
+    };
+    return state;
+  }
+
+  it('clamps a legacy save with 8 stacked aftereffects to 3 active, wavesLeft <= 3', () => {
+    const migrated = migrateGameState(
+      rawWithAfterEffects([
+        { key: 'scout', wavesLeft: 9 },
+        { key: 'leak', wavesLeft: 5 },
+        { key: 'revenge', wavesLeft: 4 },
+        { key: 'desecrate', wavesLeft: 3 },
+        { key: 'merchant', wavesLeft: 2 },
+        { key: 'hunter', wavesLeft: 2 },
+        { key: 'royal', wavesLeft: 2 },
+        { key: 'supply', wavesLeft: 1 },
+      ]) as GameState
+    );
+    const ae = migrated.expedition.afterEffects;
+    expect(ae).toHaveLength(3);
+    expect(ae.every((a) => a.wavesLeft <= 3)).toBe(true);
+    // Keeps the entries closest to expiry (lowest wavesLeft first; ties keep
+    // their legacy array order).
+    expect(ae.map((a) => a.key)).toEqual(['supply', 'merchant', 'hunter']);
+  });
+
+  it('drops junk entries and passes a well-formed small stack through untouched', () => {
+    const migrated = migrateGameState(
+      rawWithAfterEffects([
+        { key: 'leak', wavesLeft: 2 },
+        { key: 'ghost', wavesLeft: 0 },
+        { key: 'no-waves', wavesLeft: -1 },
+      ]) as GameState
+    );
+    expect(migrated.expedition.afterEffects).toEqual([{ key: 'leak', wavesLeft: 2 }]);
+
+    const empty = migrateGameState(rawWithAfterEffects([]) as GameState);
+    expect(empty.expedition.afterEffects).toEqual([]);
+  });
+});

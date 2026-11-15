@@ -97,6 +97,36 @@ function asStringArray(val: unknown): string[] {
   return Array.isArray(val) ? val.filter((x): x is string => typeof x === 'string') : [];
 }
 
+// --- Ticket 18: legacy-save clamp for expedition aftereffects ---
+// Old builds could append aftereffects without a concurrency cap, so a live
+// save may carry an unbounded stack of hero-mod effects. The Economist
+// migration contract clamps on load: at most 3 active effects, each with
+// wavesLeft <= 3. Strategy: keep the 3 entries CLOSEST TO EXPIRY (lowest
+// wavesLeft; stable sort keeps earlier/older entries first on ties) and trim
+// their wavesLeft to 3. All consumers (resolveExpeditionAftereffects /
+// tickExpeditionAftereffects) are order-insensitive, so reordering is safe.
+const EXPED_AE_MAX_ACTIVE = 3;
+const EXPED_AE_MAX_WAVES_LEFT = 3;
+
+function clampExpeditionAfterEffects(raw: unknown): ExpeditionState['afterEffects'] {
+  if (!Array.isArray(raw)) return [];
+  const sanitized = raw
+    .filter(
+      (x): x is Record<string, unknown> => isRecord(x) && typeof x.key === 'string'
+    )
+    .map((x) => ({
+      key: asString(x.key, ''),
+      wavesLeft: Math.min(
+        EXPED_AE_MAX_WAVES_LEFT,
+        Math.max(0, asNonNegInt(x.wavesLeft, 0))
+      ),
+    }))
+    .filter((x) => x.key !== '' && x.wavesLeft > 0);
+  return sanitized
+    .sort((a, b) => a.wavesLeft - b.wavesLeft)
+    .slice(0, EXPED_AE_MAX_ACTIVE);
+}
+
 function normalizeSlotGrade(val: unknown): SlotGrade {
   if (typeof val === 'string' && isTrapGrade(val)) return val;
   return '?';
@@ -785,9 +815,7 @@ function migrateGameStateInternal(raw: unknown, skipSnapshot: boolean): GameStat
     activeEvent: typeof rawExp.activeEvent === 'string' ? rawExp.activeEvent : null,
     arrivedVisited: asBoolean(rawExp.arrivedVisited, false),
     clearedLengths: asStringArray(rawExp.clearedLengths) as ExpeditionLengthKey[],
-    afterEffects: Array.isArray(rawExp.afterEffects)
-      ? (rawExp.afterEffects as ExpeditionState['afterEffects'])
-      : [],
+    afterEffects: clampExpeditionAfterEffects(rawExp.afterEffects),
     log: asStringArray(rawExp.log),
   };
 
