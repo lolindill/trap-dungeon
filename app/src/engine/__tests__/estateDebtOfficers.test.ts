@@ -54,6 +54,8 @@ import {
   performOfficerInteraction,
   talkToOfficer,
 } from '../officers';
+import { applyWaveSettlement } from '../raid';
+import { resolveRaidModifiers } from '../raidMods';
 import { createInitialGameState } from '../saveLoad';
 
 afterEach(() => {
@@ -799,5 +801,77 @@ describe('Ticket 25: Income-Scaled Min Due, Softened Late Strike, Handover Affin
     const lines =
       (finished.expedition as RichExpeditionState).lastSummary?.lootLines ?? [];
     expect(lines.join(' | ')).toContain('smelted from surplus Shards');
+  });
+});
+
+// Ticket 16: settlement resolution point — purge, tick, mole decrement, flag reset
+describe('Ticket 16: Settlement Resolution — one-shot mod purge & perk-flag reset', () => {
+  it('purges the L6/L10 next-raid perk flags and one-shot raid mods after one settlement (stage perks persist)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const fresh = createInitialGameState();
+    const state = makeDayState({
+      mode: 'result',
+      wave: 3,
+      party: [],
+      estate: {
+        ...fresh.estate,
+        perks: {
+          firstDcOnce: true, // L6 / expedition parts bag
+          allDcNext: true, // L10
+          prepIntelOnce: true, // L1/L5 / expedition intel
+          aceDowngradeNext: true, // L7
+          newTrapUpNext: true, // L9
+          trapUpgradeCut: true, // L3 — standing stage perk, must persist
+          maxIntelBonus: 2, // L8 + expedition stack (ticket 19), must persist
+        },
+      },
+      crises: {
+        ...fresh.crises,
+        activeRaidMods: [
+          { key: 'first_dc', value: 1 },
+          { key: 'first_dc', value: 1 }, // exact duplicate -> normalized away
+          { key: 'intel', value: 2 },
+          { key: 'intel_zero', value: 1 },
+        ],
+      },
+    });
+
+    const settled = applyWaveSettlement(state, 'wipe');
+    expect(settled.estate.perks.firstDcOnce).toBe(false);
+    expect(settled.estate.perks.allDcNext).toBe(false);
+    expect(settled.estate.perks.prepIntelOnce).toBe(false);
+    expect(settled.estate.perks.aceDowngradeNext).toBe(false);
+    expect(settled.estate.perks.newTrapUpNext).toBe(false);
+    // Stage perks survive the settlement (no difficulty-inflation either way:
+    // trapUpgradeCut is a workshop cost sink, maxIntelBonus is a durable stack).
+    expect(settled.estate.perks.trapUpgradeCut).toBe(true);
+    expect(settled.estate.perks.maxIntelBonus).toBe(2);
+    // Every one-shot raid mod consumed by the raid is gone; dupes normalized.
+    expect(settled.crises.activeRaidMods).toHaveLength(0);
+  });
+
+  it('a consumed Lilim DC promise is gone for the NEXT raid (resolver no longer sees it)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const fresh = createInitialGameState();
+    const state = makeDayState({
+      mode: 'result',
+      wave: 3,
+      party: [],
+      estate: {
+        ...fresh.estate,
+        perks: { firstDcOnce: true, allDcNext: true },
+      },
+    });
+    const ctx = { floorNum: 1, isFirstRoom: true, hasMonsterOnFloor: false };
+    // Fresh estate (approval 50 / food 40) + lilim aff 0 -> the only DC
+    // contributors are the two once-flags.
+    const before = resolveRaidModifiers(state, ctx);
+    expect(before.firstRoomDcDelta).toBe(1); // firstDcOnce
+    expect(before.allFloorsDcDelta).toBe(1); // allDcNext
+
+    const settled = applyWaveSettlement(state, 'wipe');
+    const after = resolveRaidModifiers(settled, ctx);
+    expect(after.firstRoomDcDelta).toBe(0);
+    expect(after.allFloorsDcDelta).toBe(0);
   });
 });

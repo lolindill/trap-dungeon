@@ -4,6 +4,8 @@ import { calcPrisonerRansom } from '../debt';
 import { getFloorDC } from '../dungeon';
 import { generateParty } from '../heroes';
 import {
+  normalizeActiveRaidMods,
+  purgeConsumedRaidMods,
   RAID_DC_CAP_ALL_FLOORS,
   RAID_DC_CAP_FIRST_ROOM,
   RAID_DC_CAP_TOTAL_NEG,
@@ -11,7 +13,7 @@ import {
   resolveRaidModifiers,
   type RaidModsCtx,
 } from '../raidMods';
-import { advanceRaidStep, resolveFloorEncounter } from '../raid';
+import { advanceRaidStep, applyWaveSettlement, resolveFloorEncounter } from '../raid';
 import { createInitialGameState } from '../saveLoad';
 import { finishBuildPhase } from '../workflow';
 import type { GameState, Prisoner } from '../../types/game';
@@ -439,5 +441,58 @@ describe('raidMods seam — consumption sites', () => {
     const joined = res.detailLines.join('\n');
     expect(joined).toContain('estate:firstRoom +1');
     expect(joined).toContain('expedition:');
+  });
+});
+
+// Ticket 16: one-shot raid-mod lifecycle (settlement resolution point)
+describe('Ticket 16: purge/normalize raid-mod helpers', () => {
+  it('purgeConsumedRaidMods removes every consumed key and normalizes duplicates', () => {
+    const mods = [
+      { key: 'first_dc', value: 1 },
+      { key: 'trap_off', value: 2 },
+      { key: 'core_guard', value: 1 },
+      { key: 'hero_up', value: 1 },
+      { key: 'hero_down', value: 1 },
+      { key: 'hero_injured', value: 1 },
+      { key: 'intel', value: 2 },
+      { key: 'intel_zero', value: 1 },
+    ];
+    expect(purgeConsumedRaidMods(mods)).toEqual([]);
+  });
+
+  it('normalizeActiveRaidMods keeps distinct same-key values (resolver sums) and drops exact duplicates', () => {
+    expect(
+      normalizeActiveRaidMods([
+        { key: 'first_dc', value: 1 },
+        { key: 'first_dc', value: 2 },
+        { key: 'first_dc', value: 1 },
+        { key: 'intel', value: 2 },
+        { key: 'intel', value: 2 },
+      ])
+    ).toEqual([
+      { key: 'first_dc', value: 1 },
+      { key: 'first_dc', value: 2 },
+      { key: 'intel', value: 2 },
+    ]);
+  });
+
+  it('settled raids expire the seam: resolveRaidModifiers no longer sees purged mods', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    let s = freshState();
+    s.wave = 3;
+    s = withMods(s, [
+      { key: 'first_dc', value: 1 },
+      { key: 'first_dc', value: 1 },
+      { key: 'intel', value: 2 },
+      { key: 'hero_up', value: 1 },
+    ]);
+    expect(resolveRaidModifiers(s, CTX).prepIntelDelta).toBe(2);
+
+    const settled = applyWaveSettlement(s, 'wipe');
+    expect(settled.crises.activeRaidMods).toEqual([]);
+    const after = resolveRaidModifiers(settled, CTX);
+    expect(after.prepIntelDelta).toBe(0);
+    expect(after.firstRoomDcDelta).toBe(0);
+    expect(after.heroModDelta).toBe(0);
   });
 });

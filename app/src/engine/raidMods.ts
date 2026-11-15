@@ -280,3 +280,61 @@ export function resolveRaidModifiers(state: GameState, ctx: RaidModsCtx): RaidMo
     notes,
   };
 }
+
+// --- Ticket 16: one-shot raid-mod lifecycle -------------------------------
+// Every key currently written into `crises.activeRaidMods` (estate crises at
+// resolveSettlementCrisis, expedition retaliation at finalizeExpedition) is a
+// "NEXT raid" promise. The raid consumes it during resolveFloorEncounter /
+// the core-room capture branch, and applyWaveSettlement — the single
+// end-of-raid resolution point — must expire it so ticket 15's seam cannot
+// ship permanent buffs.
+
+/**
+ * All mod keys the raid consumes. Every entry in `crises.activeRaidMods`
+ * carrying one of these keys is one-shot and is purged at settlement.
+ * Future writers that add a genuinely persistent key must NOT list it here.
+ */
+export const CONSUMED_RAID_MOD_KEYS: readonly string[] = [
+  'first_dc',
+  'trap_off',
+  'core_guard',
+  'hero_up',
+  'hero_down',
+  'hero_injured',
+  'intel',
+  'intel_zero',
+];
+
+export interface ActiveRaidMod {
+  key: string;
+  value: number;
+}
+
+/**
+ * Normalize an activeRaidMods array: drop exact duplicates (same key AND
+ * value), preserving first-seen order. Used both at the write sites (estate
+ * crisis application used to spread without dedupe, so repeated crises with
+ * the same rolled mod stacked identical entries) and in the purge path.
+ * Same-key-different-value entries are intentionally kept: the resolver sums
+ * values, so distinct rolls legitimately stack.
+ */
+export function normalizeActiveRaidMods(mods: ActiveRaidMod[]): ActiveRaidMod[] {
+  const seen = new Set<string>();
+  const out: ActiveRaidMod[] = [];
+  for (const m of mods) {
+    const id = `${m.key}=${m.value}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ key: m.key, value: m.value });
+  }
+  return out;
+}
+
+/**
+ * The settlement-side expiry: remove every entry whose key the raid consumes,
+ * then normalize what remains. Pure; returns a new array.
+ */
+export function purgeConsumedRaidMods(mods: ActiveRaidMod[]): ActiveRaidMod[] {
+  const consumed = new Set<string>(CONSUMED_RAID_MOD_KEYS);
+  return normalizeActiveRaidMods(mods.filter((m) => !consumed.has(m.key)));
+}
