@@ -51,6 +51,10 @@ export const EXPED_CFG = {
   ABYSS_LOST_CHANCE: 0.03,
   FATIGUE_START_DAY: 4,
   HIGH_HAUL_MP: 150,
+  // Ticket 21: expedition parts bag resolves at finalize — Economist table:
+  // monetize at most 3 parts at 8 MP each; surplus reroutes to the central pool.
+  PARTS_MONETIZE_CAP: 3,
+  PARTS_MP_EACH: 8,
 } as const;
 
 export interface ExpeditionLengthDef {

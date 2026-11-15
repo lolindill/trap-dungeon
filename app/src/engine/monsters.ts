@@ -190,10 +190,7 @@ export function killMonsterAndGrantParts(
       ...state,
       monsters: state.monsters.filter((m) => m.id !== monsterId),
       floors: stripMonsterFromFloors(state.floors, monsterId),
-      expedition: {
-        ...state.expedition,
-        lootParts: state.expedition.lootParts + 1,
-      },
+      parts: state.parts + 1,
     },
   };
 }
@@ -427,7 +424,10 @@ export function absorbMonster(
 }
 
 /**
- * `mevo_` (0 AP, Estate Day): Force Evolution when XP >= 80% threshold; costs 50 * stars MP, 15% fatal failure.
+ * `mevo_` (1 AP, Estate Day): Force Evolution when XP >= 80% threshold.
+ * Ticket 21 council pricing: 50 x stars MP AND 2 x target-stars Trap Parts,
+ * requires Fed >= 2 (keeps the feeding loop relevant), 25% fatal failure
+ * (the corpse still yields +1 Trap Parts).
  */
 export function evolveMonster(
   state: GameState,
@@ -436,6 +436,10 @@ export function evolveMonster(
 ): MonsterActionResult {
   if (!isDayPhase(state)) {
     return monsterFailResult(state, 'Force Evolution requires Day (AP) phase.', 'Force Evolution');
+  }
+  const apCheck = canSpendDayAp(state, `mevo_${monsterId}`);
+  if (!apCheck.ok) {
+    return monsterFailResult(state, apCheck.reason, 'Force Evolution');
   }
   const monster = state.monsters.find((m) => m.id === monsterId);
   if (!monster) {
@@ -454,28 +458,50 @@ export function evolveMonster(
       'Force Evolution'
     );
   }
+  if (monster.fed < MONSTER_CFG.FORCE_EVO.MIN_FED) {
+    return monsterFailResult(
+      state,
+      `Requires Fed ≥ ${MONSTER_CFG.FORCE_EVO.MIN_FED} — feed captives to the monster first.`,
+      'Force Evolution'
+    );
+  }
 
+  const targetStars = (monster.stars + 1) as 1 | 2 | 3;
   const cost = MONSTER_CFG.FORCE_EVO.MP_PER_STAR * monster.stars;
+  const partsCost = MONSTER_CFG.FORCE_EVO.PARTS_PER_TARGET_STAR * targetStars;
   if (state.points < cost) {
     return monsterFailResult(state, `Not enough MP (need ${cost} MP).`, 'Force Evolution');
   }
+  if (state.parts < partsCost) {
+    return monsterFailResult(
+      state,
+      `Not enough Trap Parts (need ${partsCost}, have ${state.parts}).`,
+      'Force Evolution'
+    );
+  }
 
   const beforeName = getMonsterDisplayName(monster);
-  const paidState: GameState = { ...state, points: state.points - cost };
+  const paidState: GameState = {
+    ...state,
+    points: state.points - cost,
+    parts: state.parts - partsCost,
+  };
 
   if (rng() < MONSTER_CFG.FORCE_EVO.DIE_CHANCE) {
     const killed = killMonsterAndGrantParts(paidState, monsterId);
-    const lineText = `💀 Force Evolution failed! ${beforeName} perished (-${cost} MP, +1 Trap Parts).`;
-    const nextState = appendDayLogLine(
-      { ...killed.state, flash: lineText },
-      { text: lineText, kind: 'monster', art: 'dk_fl_monster' }
-    );
+    const lineText = `💀 Force Evolution failed! ${beforeName} perished (-${cost} MP, -${partsCost} Trap Parts, +1 Trap Parts).`;
+    const spent = spendDayAp(killed.state, `mevo_${monsterId}`, {
+      text: lineText,
+      kind: 'monster',
+      art: 'dk_fl_monster',
+    });
+    if (!spent.ok) return monsterFailResult(state, spent.state.flash, 'Force Evolution');
     return {
       ok: true,
-      state: nextState,
+      state: { ...spent.state, flash: lineText },
       message: lineText,
       title: `Force Evolution Failed: ${beforeName}`,
-      sceneContext: `An unstable Force Evolution ritual tore ${beforeName} apart in the Beast Pen (-${cost} MP, yielding +1 Trap Parts).`,
+      sceneContext: `An unstable Force Evolution ritual tore ${beforeName} apart in the Beast Pen (-${cost} MP, -${partsCost} Trap Parts, yielding +1 Trap Parts).`,
       imageUrl: resolveSceneAsset('dk_fl_monster'),
       died: true,
     };
@@ -483,23 +509,24 @@ export function evolveMonster(
 
   const evolvedMon: MonsterInstance = {
     ...monster,
-    stars: (monster.stars + 1) as 1 | 2 | 3,
+    stars: targetStars,
     xp: Math.max(monster.xp, need),
   };
   const afterName = getMonsterDisplayName(evolvedMon);
-  const lineText = `⚡ Force Evolution succeeded! ${beforeName} → ${afterName} (-${cost} MP).`;
-  const nextState = appendDayLogLine(
+  const lineText = `⚡ Force Evolution succeeded! ${beforeName} → ${afterName} (-${cost} MP, -${partsCost} Trap Parts).`;
+  const spent = spendDayAp(
     {
       ...paidState,
       monsters: paidState.monsters.map((m) => (m.id === monsterId ? evolvedMon : m)),
-      flash: lineText,
     },
+    `mevo_${monsterId}`,
     { text: lineText, star: true, kind: 'monster', art: 'dk_fl_monster' }
   );
+  if (!spent.ok) return monsterFailResult(state, spent.state.flash, 'Force Evolution');
 
   return {
     ok: true,
-    state: nextState,
+    state: { ...spent.state, flash: lineText },
     message: lineText,
     title: `Force Evolution: ${afterName}`,
     sceneContext: `Dark mana surged through the Beast Pen as ${beforeName} underwent forced metamorphosis into ${afterName}.`,
@@ -772,10 +799,7 @@ export function disposeMonster(
     ...state,
     monsters: remainingMonsters,
     floors: cleanedFloors,
-    expedition: {
-      ...state.expedition,
-      lootParts: state.expedition.lootParts + 1,
-    },
+    parts: state.parts + 1,
     town: {
       ...state.town,
       food: clamp(state.town.food + 10, 0, 100),
@@ -1098,10 +1122,7 @@ export function applyUpkeepCycle(
           // Escaped/starved monsters from arrears do not grant trap parts
           working = {
             ...killed.state,
-            expedition: {
-              ...killed.state.expedition,
-              lootParts: working.expedition.lootParts,
-            },
+            parts: working.parts,
           };
           lostMonsters.push(m);
         }

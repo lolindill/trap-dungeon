@@ -850,12 +850,16 @@ export function finalizeExpedition(
 
   // Estate perks from parts / intel
   const nextPerks = { ...state.estate.perks };
-  if (exp.lootParts > 0) {
-    if (!nextPerks.firstDcOnce) {
-      nextPerks.firstDcOnce = true;
-    } else {
-      nextPoints += exp.lootParts * 15;
-    }
+  // Ticket 21: the parts bag resolves at finalize — cap monetization at
+  // PARTS_MONETIZE_CAP parts x PARTS_MP_EACH MP, reroute the surplus into the
+  // central `parts` pool (no silent wipe at next launch, no 15 MP/unit arbitrage).
+  const partsBag = exp.lootParts;
+  const partsSold = Math.min(EXPED_CFG.PARTS_MONETIZE_CAP, partsBag);
+  const partsStored = partsBag - partsSold;
+  const nextParts = state.parts + partsStored;
+  nextPoints += partsSold * EXPED_CFG.PARTS_MP_EACH;
+  if (partsBag > 0 && !nextPerks.firstDcOnce) {
+    nextPerks.firstDcOnce = true;
   }
   if (exp.lootIntel > 0) {
     nextPerks.prepIntelOnce = true;
@@ -866,7 +870,12 @@ export function finalizeExpedition(
   if (exp.lootMp > 0) lootLines.push(`+${exp.lootMp} MP`);
   if (exp.lootFood > 0) lootLines.push(`+${exp.lootFood} Food`);
   if (exp.lootPop > 0) lootLines.push(`+${exp.lootPop} Pop`);
-  if (exp.lootParts > 0) lootLines.push(`+${exp.lootParts} Trap Parts`);
+  if (partsBag > 0) {
+    lootLines.push(
+      `+${partsBag} Trap Parts${partsSold > 0 ? ` (${partsSold} sold → +${partsSold * EXPED_CFG.PARTS_MP_EACH} MP)` : ''}`
+    );
+    if (partsStored > 0) lootLines.push(`+${partsStored} Trap Parts → Storage`);
+  }
   if (exp.lootEggs > 0) lootLines.push(`+${exp.lootEggs} Monster Egg(s)`);
   if (exp.lootIntel > 0) lootLines.push(`+${exp.lootIntel} Intel`);
   if (exp.lootShards > 0) lootLines.push(`+${exp.lootShards} Relic Shard(s)`);
@@ -952,6 +961,7 @@ export function finalizeExpedition(
   return {
     ...state,
     points: nextPoints,
+    parts: nextParts,
     fear: nextFear,
     town: nextTown,
     estate: { ...state.estate, perks: nextPerks },

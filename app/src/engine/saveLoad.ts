@@ -315,6 +315,7 @@ export function createInitialGameState(): GameState {
     version: CFG.VERSION,
     mode: 'build',
     points: CFG.START_POINTS,
+    parts: 0,
     wave: 0,
     day: 0,
     ap: 3,
@@ -748,6 +749,11 @@ function migrateGameStateInternal(raw: unknown, skipSnapshot: boolean): GameStat
 
   const expDef = createInitialExpeditionState();
   const rawExp = isRecord(raw.expedition) ? raw.expedition : {};
+  // Ticket 21: legacy saves parked trap parts in `expedition.lootParts` where the
+  // next launch silently wiped them. On load, idle parts fold into the central
+  // `parts` pool; an in-flight expedition keeps its loot bag untouched.
+  const expBagInFlight = asBoolean(rawExp.active, false);
+  const legacyPartsBag = expBagInFlight ? 0 : asNonNegInt(rawExp.lootParts, 0);
   const expedition: ExpeditionState = {
     ...expDef,
     active: asBoolean(rawExp.active, expDef.active),
@@ -765,7 +771,7 @@ function migrateGameStateInternal(raw: unknown, skipSnapshot: boolean): GameStat
     lootMp: asNonNegInt(rawExp.lootMp, 0),
     lootFood: asNonNegInt(rawExp.lootFood, 0),
     lootPop: asNonNegInt(rawExp.lootPop, 0),
-    lootParts: asNonNegInt(rawExp.lootParts, 0),
+    lootParts: expBagInFlight ? asNonNegInt(rawExp.lootParts, 0) : 0,
     lootEggs: asNonNegInt(rawExp.lootEggs, 0),
     lootShards: asNonNegInt(rawExp.lootShards, 0),
     lootIntel: asNonNegInt(rawExp.lootIntel, 0),
@@ -928,6 +934,7 @@ function migrateGameStateInternal(raw: unknown, skipSnapshot: boolean): GameStat
     version: CFG.VERSION,
     mode,
     points: asNonNegInt(raw.points, defaults.points),
+    parts: asNonNegInt(raw.parts, 0) + legacyPartsBag,
     wave: currentWave,
     day: asNonNegInt(raw.day, currentWave),
     ap,

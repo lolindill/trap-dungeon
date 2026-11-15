@@ -254,6 +254,41 @@ describe('schemaVersion 2 & Phase 1 -> v2 migration', () => {
     expect(loaded.wave).toBe(2);
     expect(loaded.debt.dueWave).toBe(5);
   });
+
+  it('defaults parts to 0 for legacy saves and folds idle expedition lootParts into the pool (ticket 21)', () => {
+    // Legacy save with no `parts` field at all -> loads safely with parts = 0
+    const legacy = migrateGameState({
+      mode: 'build',
+      wave: 4,
+      points: 120,
+      floors: [],
+    });
+    expect(legacy.parts).toBe(0);
+    expect(legacy.expedition.lootParts).toBe(0);
+
+    // Idle parts parked in expedition.lootParts (pre-21 leak) fold into the pool on load
+    const hoard = migrateGameState({
+      mode: 'build',
+      wave: 6,
+      points: 120,
+      floors: [],
+      parts: 3,
+      expedition: { active: false, lootParts: 5 },
+    });
+    expect(hoard.parts).toBe(8); // 3 pool + 5 legacy bag
+    expect(hoard.expedition.lootParts).toBe(0); // no more silent launch wipe
+
+    // An in-flight expedition keeps its loot bag untouched (parts not double-counted)
+    const midTrip = migrateGameState({
+      mode: 'exped',
+      wave: 6,
+      points: 120,
+      floors: [],
+      expedition: { active: true, lootParts: 4 },
+    });
+    expect(midTrip.parts).toBe(0);
+    expect(midTrip.expedition.lootParts).toBe(4);
+  });
 });
 
 describe('TrapBlueprint migration', () => {
