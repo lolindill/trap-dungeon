@@ -230,7 +230,8 @@ export function EstatePanel({
           Siphons 25% of (Tax + Base Income) per M.Settle, cap 150 MP x Town Lv.
           Sinks: 🛡 Core Guard auto-spends 50 vault MP on Core breach · 💳 Vault
           Draft on Collection visits pays up to 50% of Min Due at a 20% premium
-          (vault-only).
+          (vault-only) · ⚔ Sellsword Contract on Collection visits: 100 vault MP
+          → +2 DC on every floor for exactly one raid (one at a time).
         </div>
       </div>
 

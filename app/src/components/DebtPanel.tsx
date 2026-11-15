@@ -9,8 +9,10 @@ import {
   getDebtSummary,
   getEleonoraVisitSceneContext,
   getExtraLoanInfo,
+  getSellswordContractInfo,
   getVaultDraftInfo,
   handoverPrisonerForDebt,
+  hireSellswordContract,
   payDebt,
   requestDebtExtension,
   resolveDebtVisit,
@@ -50,6 +52,7 @@ export function DebtPanel({
   const summary = getDebtSummary(state);
   const loanInfo = getExtraLoanInfo(state);
   const draftInfo = getVaultDraftInfo(state);
+  const sellswordInfo = getSellswordContractInfo(state);
   const dayActive = isDayPhase(state);
   const isDebtVisit = state.mode === 'debt';
   const loanApCheck = canSpendDayAp(state, 'loan');
@@ -267,6 +270,45 @@ export function DebtPanel({
           {!draftInfo.canDraft && (
             <div className="dk-help-hint" style={{ marginTop: 4 }}>
               🔒 {draftInfo.reason}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ticket 24: Sellsword Contract — 100 vault MP buys +2 all-floor DC for exactly one raid */}
+      {isDebtVisit && !state.debt.ended && (
+        <div className="dk-card">
+          <div className="dk-row" style={{ marginBottom: 4 }}>
+            <strong style={{ color: 'var(--y)' }}>SELLSWORD CONTRACT (ONE RAID)</strong>
+            <span className="dk-badge y">Vault: {sellswordInfo.vaultMp} MP</span>
+          </div>
+          <div className="dk-help-hint" style={{ marginBottom: 6 }}>
+            Hire a sellsword company for the next raid: +{sellswordInfo.dcPerFloor} DC
+            on every floor for exactly one raid — {sellswordInfo.costMp} vault MP only,
+            cash untouched. One contract at a time; it occupies a raid-mod slot and
+            competes with crisis mods under the council caps.
+          </div>
+          {sellswordInfo.pending && (
+            <div className="dk-help-hint" style={{ marginBottom: 6, color: 'var(--n)' }}>
+              ⚔ Sellsword ACTIVE — +{sellswordInfo.dcPerFloor} DC on every floor this
+              raid (contract expires at settlement).
+            </div>
+          )}
+          <button
+            type="button"
+            className="dk-btn sm amber"
+            disabled={isBusy || !sellswordInfo.canHire}
+            onClick={() => onUpdateState((prev) => hireSellswordContract(prev).state)}
+          >
+            {sellswordInfo.canHire
+              ? `Hire Sellsword — Next Raid +${sellswordInfo.dcPerFloor} DC (${sellswordInfo.costMp} Vault MP)`
+              : sellswordInfo.pending
+                ? 'Sellsword Under Contract (expires after this raid)'
+                : 'Sellsword Unavailable'}
+          </button>
+          {!sellswordInfo.canHire && (
+            <div className="dk-help-hint" style={{ marginTop: 4 }}>
+              🔒 {sellswordInfo.reason}
             </div>
           )}
         </div>

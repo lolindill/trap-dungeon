@@ -143,6 +143,13 @@ export function resolveRaidModifiers(state: GameState, ctx: RaidModsCtx): RaidMo
     allFloorsRaw += lilim.allFloorsDcBonus;
     notes.push(`lilim:allFloors ${fmt(lilim.allFloorsDcBonus)}`);
   }
+  // Ticket 24: sellsword contract — vault-funded `all_dc` competes in the same
+  // bucket (and under the same bucket + total caps) as estate/Lilim sources.
+  const allDcMods = sumMods(state, 'all_dc');
+  if (allDcMods !== 0) {
+    allFloorsRaw += allDcMods;
+    notes.push(`activeRaidMods:all_dc ${fmt(allDcMods)} (sellsword contract)`);
+  }
   const allFloorsDcDelta = clamp(allFloorsRaw, RAID_DC_CAP_TOTAL_NEG, RAID_DC_CAP_ALL_FLOORS);
   if (allFloorsDcDelta !== allFloorsRaw) {
     notes.push(`capped: allFloors clamped to ${fmt(allFloorsDcDelta)}`);
@@ -303,6 +310,7 @@ export const CONSUMED_RAID_MOD_KEYS: readonly string[] = [
   'hero_injured',
   'intel',
   'intel_zero',
+  'all_dc', // Ticket 24: sellsword contract — one raid only, purged at settlement
 ];
 
 export interface ActiveRaidMod {
@@ -338,3 +346,12 @@ export function purgeConsumedRaidMods(mods: ActiveRaidMod[]): ActiveRaidMod[] {
   const consumed = new Set<string>(CONSUMED_RAID_MOD_KEYS);
   return normalizeActiveRaidMods(mods.filter((m) => !consumed.has(m.key)));
 }
+
+// --- Ticket 24: Sellsword Contract seam constants ---------------------------
+// The vault-funded contract writes ONE entry of this key into
+// `crises.activeRaidMods`; the resolver reads it as an allFloors DC source
+// inside the council caps (bucket [-4, +2], total [-4, +4]) and ticket 16's
+// settlement purge (`all_dc` is in CONSUMED_RAID_MOD_KEYS) expires it after
+// exactly one raid. The purchase site lives in debt.ts (debt-visit action).
+export const SELLSWORD_RAID_MOD_KEY = 'all_dc';
+export const SELLSWORD_RAID_MOD_VALUE = 2;
