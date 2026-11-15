@@ -30,7 +30,9 @@ import {
   rollRealmSituationsForNextWave,
   updateGuildPrepOnRaidEnd,
 } from './realm';
-import { resolveRaidModifiers } from './raidMods';
+import { tickExpeditionAftereffects } from './expedition';
+import { isActiveMole } from './prison';
+import { purgeConsumedRaidMods, resolveRaidModifiers } from './raidMods';
 import { clamp, pickOne, randInt } from './rng';
 
 function fearPenalty(state: GameState, hero: Hero, partyHasCleric: boolean): number {
@@ -1189,6 +1191,58 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
   }
 
   postState = evaluateRankTrials(postState, outcome);
+
+  // --- Ticket 16: settlement resolution point ------------------------------
+  // applyWaveSettlement is the single end-of-raid resolution spot. The raid's
+  // DC/mods were consumed earlier in advanceRaidStep (resolveFloorEncounter +
+  // the core-room capture branch), so everything promised "for the NEXT raid"
+  // expires HERE, once per raid — consumed buffs can no longer leak into the
+  // next wave (startNewDay only resets day perks by design).
+  //   1. Expedition aftereffects tick — wavesLeft finally decrements per raid.
+  //   2. Active double-agent mole decrement — 0 -> idle (job/floor-slot
+  //      eligibility is restored automatically: isActiveMole goes false and
+  //      isActiveCaptive true again; job/assignedFloor were already nulled at
+  //      dispatch).
+  //   3. One-shot activeRaidMods purge + normalize (seam contract).
+  //   4. Lilim/expedition "next raid" perk flags reset. maxIntelBonus (L8,
+  //      ticket 19 stack) and trapUpgradeCut (L3 standing stage perk — a
+  //      workshop cost sink, not raid power) intentionally persist.
+  const activeMole = postState.prisoners.find((p) => isActiveMole(p)) ?? null;
+  const moleRaidsBefore = activeMole ? activeMole.moleRaidsLeft ?? 0 : 0;
+  const tickedPrisoners = activeMole
+    ? postState.prisoners.map((p) =>
+        p.pid === activeMole.pid
+          ? { ...p, moleRaidsLeft: Math.max(0, moleRaidsBefore - 1) }
+          : p
+      )
+    : postState.prisoners;
+  const settled = {
+    ...postState,
+    expedition: tickExpeditionAftereffects(postState).expedition,
+    prisoners: tickedPrisoners,
+    crises: {
+      ...postState.crises,
+      activeRaidMods: purgeConsumedRaidMods(postState.crises.activeRaidMods),
+    },
+    estate: {
+      ...postState.estate,
+      perks: {
+        ...postState.estate.perks,
+        firstDcOnce: false,
+        allDcNext: false,
+        prepIntelOnce: false,
+        aceDowngradeNext: false,
+        newTrapUpNext: false,
+      },
+    },
+  };
+  postState = settled;
+  if (activeMole && moleRaidsBefore <= 1) {
+    items.push({
+      label: `🕵️ Double Agent returned from the Guild (${activeMole.name})`,
+      delta: 0,
+    });
+  }
 
   postState.lastSettlement = {
     ...postState.lastSettlement!,

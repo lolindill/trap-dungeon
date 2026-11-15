@@ -34,6 +34,7 @@ import {
   type RichExpeditionCrewMember,
   type RichExpeditionState,
 } from '../expedition';
+import { applyWaveSettlement } from '../raid';
 import { createInitialGameState } from '../saveLoad';
 
 afterEach(() => {
@@ -537,5 +538,28 @@ describe('Auto-Progress (exRecommend / exStop), Relic Shards & 8 X.AFTER Afteref
     const ticked = tickExpeditionAftereffects(finished);
     expect(ticked.expedition.afterEffects.some((a) => a.key === 'scout')).toBe(false);
     expect(ticked.expedition.afterEffects.some((a) => a.key === 'supply')).toBe(true);
+  });
+});
+
+// Ticket 16: aftereffects tick wired into the settlement resolution point
+describe('Ticket 16: applyWaveSettlement ticks expedition aftereffects', () => {
+  it('wavesLeft decrements via settlement (not just a direct tick call) and expired effects drop off', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const state = makeExpedState({
+      active: false,
+      afterEffects: [
+        { key: 'supply', wavesLeft: 3 },
+        { key: 'scout', wavesLeft: 1 },
+      ],
+    });
+    state.crises.activeRaidMods = [{ key: 'hero_up', value: 1 }];
+
+    const settled = applyWaveSettlement(state, 'wipe');
+    // Per-settlement tick: scout (1W) expires, supply counts down 3 -> 2.
+    const supply = settled.expedition.afterEffects.find((a) => a.key === 'supply');
+    expect(supply?.wavesLeft).toBe(2);
+    expect(settled.expedition.afterEffects.some((a) => a.key === 'scout')).toBe(false);
+    // The raid-mods seam expires at the same resolution point.
+    expect(settled.crises.activeRaidMods).toHaveLength(0);
   });
 });

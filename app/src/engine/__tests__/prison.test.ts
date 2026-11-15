@@ -16,6 +16,7 @@ import {
   buildPrisonNarrateContext,
   buildPrisonRosterPromptContext,
   calculateRansom,
+  canDispatchMole,
   canExecutePact,
   convertPrisoner,
   dispatchPrisonerMole,
@@ -30,11 +31,14 @@ import {
   getJobYieldPreview,
   getPrisonerPronouns,
   getSaleRiskOdds,
+  isActiveCaptive,
+  isActiveMole,
   releasePrisoner,
   sellPrisoner,
   unassignPrisonerJob,
 } from '../prison';
 import { computeManagementSettle } from '../estate';
+import { applyWaveSettlement } from '../raid';
 import { createInitialGameState } from '../saveLoad';
 
 afterEach(() => {
@@ -628,5 +632,52 @@ describe('Ticket 23: preview/settle parity', () => {
         getJobYieldPreview(tiredState, tired, job.key).mp
       );
     }
+  });
+});
+
+// Ticket 16: mole decrement at the settlement resolution point
+describe('Ticket 16: Settlement decrements the active mole and restores idle eligibility', () => {
+  it('after one settlement moleRaidsLeft === 1; after two the mole is idle and re-eligible', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const mole = makeCaptive({
+      pid: 6,
+      name: 'Sylvia',
+      marks: { obey: 3, pleasure: 0, terror: 0, shame: 0 },
+    });
+    let state = makeDayState([mole], { ap: 3, apMax: 3, wave: 3 });
+
+    const dispatched = dispatchPrisonerMole(state, 6);
+    expect(dispatched.ok).toBe(true);
+    state = dispatched.state;
+    expect(state.prisoners[0].moleRaidsLeft).toBe(2);
+    expect(isActiveMole(state.prisoners[0])).toBe(true);
+
+    // Raid 1 settles -> the Double Agent promise has 1 raid left.
+    state = applyWaveSettlement(state, 'wipe');
+    expect(state.prisoners[0].moleRaidsLeft).toBe(1);
+    expect(isActiveMole(state.prisoners[0])).toBe(true);
+
+    // Raid 2 settles -> back to idle: isActiveMole false, cell-eligible again.
+    state = applyWaveSettlement(state, 'wipe');
+    expect(state.prisoners[0].moleRaidsLeft).toBe(0);
+    expect(isActiveMole(state.prisoners[0])).toBe(false);
+    expect(isActiveCaptive(state.prisoners[0])).toBe(true);
+    // Re-dispatch eligibility is restored (settlement leaves mode='result';
+    // the gate itself is mode-independent, so check from a fresh Day phase —
+    // she already spent her AP on dispatch day, hence the cleared apUsed).
+    expect(
+      canDispatchMole({ ...state, mode: 'estate', apUsed: {} }, state.prisoners[0]).ok
+    ).toBe(true);
+  });
+
+  it('settlement reports the mole coming home from the Guild', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const mole = makeCaptive({ pid: 7, moleRaidsLeft: 1 });
+    const state = makeDayState([mole], { wave: 3 });
+    const settled = applyWaveSettlement(state, 'wipe');
+    expect(settled.prisoners[0].moleRaidsLeft).toBe(0);
+    expect(settled.lastSettlement?.items.some((i) => i.label.includes('Double Agent returned'))).toBe(
+      true
+    );
   });
 });

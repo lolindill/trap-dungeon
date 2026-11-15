@@ -1849,10 +1849,16 @@ export function resolveSettlementCrisis(
           ? forceModProc
           : Math.random() < choice.raidMod.chance;
     if (proc) {
-      nextRaidMods = [
-        ...nextRaidMods,
-        { key: choice.raidMod.key, value: choice.raidMod.value },
-      ];
+      // Ticket 16: normalize on write — exact-duplicate (key,value) entries
+      // used to stack when consecutive crises rolled the same mod (the
+      // resolver sums values, so duplicates double-dipped). Distinct values
+      // of the same key still stack; identical entries keep first occurrence.
+      const entry = { key: choice.raidMod.key, value: choice.raidMod.value };
+      nextRaidMods = nextRaidMods.some(
+        (m) => m.key === entry.key && m.value === entry.value
+      )
+        ? nextRaidMods
+        : [...nextRaidMods, entry];
       modText = ` · Next Raid: ${choice.raidMod.label}`;
     }
   }
