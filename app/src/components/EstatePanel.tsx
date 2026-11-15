@@ -218,6 +218,22 @@ export function EstatePanel({
         </button>
       </div>
 
+      {/* Ticket 24: Estate Vault status + sink preview (the draft action itself lives in DebtPanel) */}
+      <div className="dk-card" style={{ marginTop: 8 }}>
+        <div className="dk-row" style={{ marginBottom: 4 }}>
+          <strong style={{ color: 'var(--y)' }}>ESTATE VAULT</strong>
+          <span className="dk-badge y">
+            {state.estate.vaultMp}/{150 * state.town.lv} MP
+          </span>
+        </div>
+        <div className="dk-help-hint">
+          Siphons 25% of (Tax + Base Income) per M.Settle, cap 150 MP x Town Lv.
+          Sinks: 🛡 Core Guard auto-spends 50 vault MP on Core breach · 💳 Vault
+          Draft on Collection visits pays up to 50% of Min Due at a 20% premium
+          (vault-only).
+        </div>
+      </div>
+
       {/* Blocking Crisis Banner if present on another sub-tab */}
       {hasMajorBlockingCrisis && effectiveTab !== 'msettle' && (
         <div className="dk-crisis-card">

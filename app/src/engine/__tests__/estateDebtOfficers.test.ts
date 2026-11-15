@@ -18,9 +18,11 @@ import {
 } from '../expedition';
 import {
   applyDebtSeizure,
+  draftDebtFromVault,
   entertainEleonora,
   getDebtSummary,
   getEleonoraVisitSceneContext,
+  getVaultDraftInfo,
   handoverPrisonerForDebt,
   payDebt,
   requestDebtExtension,
@@ -799,5 +801,124 @@ describe('Ticket 25: Income-Scaled Min Due, Softened Late Strike, Handover Affin
     const lines =
       (finished.expedition as RichExpeditionState).lastSummary?.lootLines ?? [];
     expect(lines.join(' | ')).toContain('smelted from surplus Shards');
+  });
+});
+
+describe('Debt: Vault Draft against Min-Due (Ticket 24)', () => {
+  function makeDraftState(overrides?: Partial<ReturnType<typeof createInitialGameState>>) {
+    return makeDayState({
+      mode: 'debt',
+      wave: 3,
+      points: 0, // vault-only sink: cash MP must stay untouched
+      estate: { ...createInitialGameState().estate, vaultMp: 500 },
+      debt: {
+        ...createInitialGameState().debt,
+        step: 2, // baseMin = 120 -> minDue = 120
+        dueWave: 3,
+      },
+      ...overrides,
+    });
+  }
+
+  it('drafts max 50% of min-due from the vault at 20% premium and moves vaultMp', () => {
+    const state = makeDraftState();
+    const info = getVaultDraftInfo(state);
+    expect(info.canDraft).toBe(true);
+    expect(info.capRelief).toBe(60); // 50% of minDue 120
+    expect(info.maxRelief).toBe(60);
+    expect(info.maxCost).toBe(72); // ceil(60 * 1.2)
+
+    const res = draftDebtFromVault(state);
+    expect(res.ok).toBe(true);
+    expect(res.state.estate.vaultMp).toBe(500 - 72); // premium paid from vault
+    expect(res.state.points).toBe(0); // vault-only: cash untouched
+    expect(res.state.debt.amount).toBe(3000 - 60); // principal reduced by relief
+    expect(res.state.debt.paidThisVisit).toBe(60); // counts toward min-due
+    expect(getDebtSummary(res.state).remainingDue).toBe(60);
+
+    // Per-visit cap: a second draft is blocked (no longer the first payment).
+    const again = draftDebtFromVault(res.state);
+    expect(again.ok).toBe(false);
+    expect(again.state.estate.vaultMp).toBe(500 - 72); // state unchanged on fail
+  });
+
+  it('applies the 20% premium to a custom draft (40 relief = 48 vault MP)', () => {
+    const res = draftDebtFromVault(makeDraftState(), 40);
+    expect(res.ok).toBe(true);
+    expect(res.state.estate.vaultMp).toBe(500 - 48);
+    expect(res.state.debt.paidThisVisit).toBe(40);
+    expect(res.state.debt.amount).toBe(2960);
+  });
+
+  it('clamps oversized requests to the 50% cap and floors fractional relief', () => {
+    const clamped = draftDebtFromVault(makeDraftState(), 999);
+    expect(clamped.ok).toBe(true);
+    expect(clamped.state.debt.paidThisVisit).toBe(60);
+    expect(clamped.state.estate.vaultMp).toBe(500 - 72);
+
+    // Vault-limited draft: 50 vault MP affords floor(50 / 1.2) = 41 relief.
+    const poorVault = draftDebtFromVault(
+      makeDraftState({
+        estate: { ...createInitialGameState().estate, vaultMp: 50 },
+      }),
+      60
+    );
+    expect(poorVault.ok).toBe(true);
+    expect(poorVault.state.debt.paidThisVisit).toBe(41);
+    expect(poorVault.state.estate.vaultMp).toBe(50 - Math.ceil(41 * 1.2)); // 50 - 50
+  });
+
+  it('blocks drafts outside debt visits, on ended debt, and when vault cannot fund the premium', () => {
+    // Wrong mode (Day prepay is a cash-only action)
+    expect(draftDebtFromVault(makeDraftState({ mode: 'estate' })).ok).toBe(false);
+
+    // Debt contract concluded
+    const ended = makeDraftState();
+    ended.debt = { ...ended.debt, ended: 'romance' };
+    expect(draftDebtFromVault(ended).ok).toBe(false);
+
+    // Vault too poor to fund even 1 MP relief (+ premium)
+    const broke = draftDebtFromVault(
+      makeDraftState({
+        estate: { ...createInitialGameState().estate, vaultMp: 1 },
+      })
+    );
+    expect(broke.ok).toBe(false);
+    expect(broke.state.estate.vaultMp).toBe(1);
+
+    // No debt left at all
+    expect(
+      draftDebtFromVault(
+        makeDraftState({
+          debt: { ...createInitialGameState().debt, amount: 0 },
+        })
+      ).ok
+    ).toBe(false);
+  });
+
+  it('blocks drafts after cash payments but allows cash to finish the covered min-due', () => {
+    const afterCash = makeDraftState({
+      points: 100,
+      debt: {
+        ...createInitialGameState().debt,
+        step: 2,
+        dueWave: 3,
+        paidThisVisit: 50,
+      },
+    });
+    expect(getVaultDraftInfo(afterCash).canDraft).toBe(false);
+    expect(draftDebtFromVault(afterCash).ok).toBe(false);
+
+    // Draft first, then cash-pay the rest -> min-due fully covered.
+    const drafted = draftDebtFromVault(makeDraftState({ points: 100 }));
+    expect(drafted.ok).toBe(true);
+    expect(drafted.state.points).toBe(100); // draft moved no cash
+    const cashRest = payDebt(drafted.state, 60);
+    expect(cashRest.ok).toBe(true);
+    expect(cashRest.state.debt.paidThisVisit).toBe(120);
+    expect(getDebtSummary(cashRest.state).remainingDue).toBe(0);
+    // points dropped by exactly the cash portion (60), vault already debited.
+    expect(cashRest.state.points).toBe(40);
+    expect(cashRest.state.estate.vaultMp).toBe(500 - 72);
   });
 });

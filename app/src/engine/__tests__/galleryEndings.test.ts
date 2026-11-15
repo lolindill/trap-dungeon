@@ -38,7 +38,12 @@ import {
   GAMEOVER_DEFS,
   rewindGameOverToWaveStart,
 } from '../endings';
-import { payDebt, resolveDebtVisit } from '../debt';
+import {
+  draftDebtFromVault,
+  getVaultDraftInfo,
+  payDebt,
+  resolveDebtVisit,
+} from '../debt';
 import { applyManagementSettle, upgradeTown } from '../estate';
 import { performOfficerInteraction } from '../officers';
 import { applyWaveSettlement } from '../raid';
@@ -561,5 +566,36 @@ describe('5 Game Overs, Vault Core Guard, Casual Grace & Wave-Start Rewind', () 
     expect(rewound!.points).toBe(420);
     expect(rewound!.endings.gameOver).toBeNull();
     expect(rewound!.crises.pendingGameOver).toBeNull();
+  });
+});
+
+describe('Vault sinks coexist with Core Guard (Ticket 24)', () => {
+  it('vault draft spends premium MP from the vault but Core Guard stays armed at >= 50', () => {
+    const base = createInitialGameState();
+    const state = {
+      ...base,
+      mode: 'debt' as const,
+      wave: 3,
+      points: 0,
+      debt: { ...base.debt, step: 2, dueWave: 3 }, // minDue = 120
+      estate: { ...base.estate, vaultMp: 122 }, // 72 draft cost + 50 core reserve
+    };
+
+    const info = getVaultDraftInfo(state);
+    expect(info.canDraft).toBe(true);
+    expect(info.maxRelief).toBe(60);
+    expect(info.maxCost).toBe(72);
+
+    const res = draftDebtFromVault(state);
+    expect(res.ok).toBe(true);
+    expect(res.state.estate.vaultMp).toBe(50); // only the core reserve left
+
+    // Vault Core Rescue (endings.ts) is untouched by the draft sink: still
+    // armed at exactly 50 vault MP and spends 50 to restore the Core.
+    const guard = flagOrProtectGameOver(res.state, 'core');
+    expect(guard.triggered).toBe(false);
+    expect(guard.protectedBy).toBe('vault');
+    expect(guard.state.estate.vaultMp).toBe(0);
+    expect(guard.state.points).toBe(50);
   });
 });
