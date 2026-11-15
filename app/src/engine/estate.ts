@@ -670,8 +670,11 @@ export function exploreTown(
   );
 
   if (candidates.length === 0) {
+    // Ticket 19: strolling decays with explores already taken today (+8/+6/+4/+3, floor 3)
+    // so resting (10 MP/AP) stays the strictly better floor.
+    const strollMp = Math.max(3, 8 - 2 * state.estate.exploreCountToday);
     const spent = spendDayAp(state, actionKey, {
-      text: `Explored ${locDef.label} — quiet stroll (+10 MP)`,
+      text: `Explored ${locDef.label} — quiet stroll (+${strollMp} MP)`,
       kind: 'explore',
     });
     if (!spent.ok) {
@@ -687,17 +690,17 @@ export function exploreTown(
       ok: true,
       state: {
         ...spent.state,
-        points: spent.state.points + 10,
+        points: spent.state.points + strollMp,
         estate: {
           ...spent.state.estate,
           activeLocation: locationId,
           exploreCountToday: exploreIndex,
         },
-        flash: `Quiet stroll at ${locDef.label} (+10 MP).`,
+        flash: `Quiet stroll at ${locDef.label} (+${strollMp} MP).`,
       },
       event: null,
       quietStroll: true,
-      message: `Quiet stroll at ${locDef.label} (+10 MP).`,
+      message: `Quiet stroll at ${locDef.label} (+${strollMp} MP).`,
     };
   }
 
@@ -738,6 +741,10 @@ export function exploreTown(
   };
 }
 
+// Ticket 19: hard cap on any single explore-event MP payout so no event branch
+// can beat resting (10 MP/AP) off a lucky roll.
+export const EVENT_MP_PAYOUT_CAP = 15;
+
 function applyExploreEffectSpec(
   state: GameState,
   eff: ExploreEffectSpec,
@@ -760,7 +767,16 @@ function applyExploreEffectSpec(
   }
 
   if (eff.mp) {
-    next = { ...next, points: Math.max(0, next.points + eff.mp) };
+    next = {
+      ...next,
+      points: Math.max(0, next.points + Math.min(eff.mp, EVENT_MP_PAYOUT_CAP)),
+    };
+  }
+  if (eff.food) {
+    next = {
+      ...next,
+      town: { ...next.town, food: Math.max(0, next.town.food + eff.food) },
+    };
   }
   if (eff.fear) {
     next = { ...next, fear: clamp(next.fear + eff.fear, 0, 100) };
@@ -772,6 +788,9 @@ function applyExploreEffectSpec(
     next = { ...next, famePoints: clamp(next.famePoints + eff.famePt, 0, 100) };
   }
   if (eff.intel) {
+    // Ticket 19: the first intel gain sets the one-shot prep leak; repeat gains
+    // stack into maxIntelBonus instead of being wasted on the boolean flag.
+    const hadIntel = !!next.estate.perks.prepIntelOnce;
     next = {
       ...next,
       estate: {
@@ -779,6 +798,8 @@ function applyExploreEffectSpec(
         perks: {
           ...next.estate.perks,
           prepIntelOnce: true,
+          maxIntelBonus:
+            (next.estate.perks.maxIntelBonus ?? 0) + (hadIntel ? eff.intel : 0),
         },
       },
     };

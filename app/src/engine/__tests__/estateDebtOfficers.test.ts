@@ -7,6 +7,7 @@ import {
   OFFICER_INTERACTIONS,
   SETTLEMENT_CRISES,
 } from '../../data/estateData';
+import type { ExploreEffectSpec } from '../../data/estateData';
 import type { Prisoner } from '../../types/game';
 import { calcRestMp, finishManagementSettle, startNewDay } from '../dayLoop';
 import {
@@ -28,6 +29,7 @@ import {
   calcPopCap,
   calcTownTax,
   computeManagementSettle,
+  EVENT_MP_PAYOUT_CAP,
   exploreTown,
   getNextTownLevelInfo,
   performTownAction,
@@ -182,7 +184,8 @@ describe('Estate: Town Lv1-5, 25 Facilities, Explore (20 Events) & M.Settle', ()
     expect(res1.state.town.approval).toBe(56);
     expect(res1.state.estate.activeLocation).toBe('square');
 
-    // Put remaining square events on cooldown -> next explore gives quiet stroll +10 MP
+    // Put remaining square events on cooldown -> next explore is a quiet stroll.
+    // Ticket 19: after 1 explore today, the payout decays to max(3, 8 - 2*1) = 6 MP.
     state = {
       ...res1.state,
       estate: {
@@ -198,7 +201,122 @@ describe('Estate: Town Lv1-5, 25 Facilities, Explore (20 Events) & M.Settle', ()
     const stroll = exploreTown(state, 'square');
     expect(stroll.ok).toBe(true);
     expect(stroll.quietStroll).toBe(true);
-    expect(stroll.state.points).toBe(ptsBefore + 10);
+    expect(stroll.state.points).toBe(ptsBefore + 6);
+    expect(stroll.state.estate.exploreCountToday).toBe(2);
+  });
+
+  it('decays quiet stroll MP (+8/+6/+4/+3) across explores and keeps rest as the floor', () => {
+    // Silence every square event so each explore resolves to a quiet stroll.
+    let state = makeDayState({
+      points: 100,
+      ap: 4,
+      estate: {
+        ...createInitialGameState().estate,
+        crisisCooldowns: {
+          ev_sq_peddler: 99,
+          ev_sq_petition: 99,
+          ev_sq_festival: 99,
+        },
+      },
+    });
+    const payouts: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const before = state.points;
+      const res = exploreTown(state, 'square');
+      expect(res.ok).toBe(true);
+      expect(res.quietStroll).toBe(true);
+      payouts.push(res.state.points - before);
+      state = res.state;
+    }
+    expect(payouts).toEqual([8, 6, 4, 3]);
+    expect(state.estate.exploreCountToday).toBe(4);
+    // Rest floor: resting converts each AP at 10 MP (calcRestMp), so a stroll
+    // must never match or beat the rest rate, even on the first explore.
+    const restRatePerAp = calcRestMp({ ...state, ap: 1 });
+    payouts.forEach((p) => expect(p).toBeLessThan(restRatePerAp));
+  });
+
+  it('caps event MP payouts at +15 and fires real negative wager branches (approval/food)', () => {
+    // Data invariant: every positive mp payout (incl. chance branches) respects the cap.
+    for (const ev of EXPLORE_EVENTS) {
+      for (const choice of ev.choices) {
+        const branches: ExploreEffectSpec[] = [choice.eff];
+        if (choice.eff.chance) {
+          branches.push(choice.eff.chance.success, choice.eff.chance.fail);
+        }
+        for (const eff of branches) {
+          if ((eff.mp ?? 0) > 0) {
+            expect(eff.mp as number).toBeLessThanOrEqual(EVENT_MP_PAYOUT_CAP);
+          }
+        }
+      }
+    }
+
+    // Inn brawl wager SUCCESS pays the promised +15 (right at the cap).
+    const winState = makeDayState({
+      points: 300,
+      ap: 3,
+      estate: { ...createInitialGameState().estate, facilities: { inn: 1 } },
+    });
+    const winEnc = exploreTown(winState, 'inn', 'inn_brawl');
+    expect(winEnc.ok).toBe(true);
+    const winPts = winEnc.state.points;
+    const win = resolveExploreEvent(winEnc.state, 1, true);
+    expect(win.ok).toBe(true);
+    expect(win.state.points).toBe(winPts + 15);
+
+    // Inn brawl wager FAILURE costs MP AND approval (real downside, not zero).
+    const loseState = makeDayState({
+      points: 300,
+      ap: 3,
+      estate: { ...createInitialGameState().estate, facilities: { inn: 1 } },
+    });
+    const loseEnc = exploreTown(loseState, 'inn', 'inn_brawl');
+    expect(loseEnc.ok).toBe(true);
+    const losePts = loseEnc.state.points;
+    const approvalBefore = loseEnc.state.town.approval;
+    const lose = resolveExploreEvent(loseEnc.state, 1, false);
+    expect(lose.ok).toBe(true);
+    expect(lose.state.points).toBe(losePts - 3);
+    expect(lose.state.town.approval).toBe(approvalBefore - 3);
+
+    // Smithy field-test FAILURE costs MP AND food.
+    const smithState = makeDayState({
+      points: 300,
+      ap: 3,
+      estate: { ...createInitialGameState().estate, facilities: { smithy: 1 } },
+    });
+    const smithEnc = exploreTown(smithState, 'smithy', 'smi_proto');
+    expect(smithEnc.ok).toBe(true);
+    const smithPts = smithEnc.state.points;
+    const foodBefore = smithEnc.state.town.food;
+    const smithFail = resolveExploreEvent(smithEnc.state, 0, false);
+    expect(smithFail.ok).toBe(true);
+    expect(smithFail.state.points).toBe(smithPts - 3);
+    expect(smithFail.state.town.food).toBe(foodBefore - 5);
+  });
+
+  it('stacks repeat explore intel into maxIntelBonus instead of wasting the repeat', () => {
+    let state = makeDayState({ points: 300, ap: 3 });
+    const enc1 = exploreTown(state, 'square', 'sq_peddler');
+    expect(enc1.ok).toBe(true);
+    const buy1 = resolveExploreEvent(enc1.state, 1); // Buy Road Rumors (8 MP)
+    expect(buy1.ok).toBe(true);
+    expect(buy1.state.estate.perks.prepIntelOnce).toBe(true);
+    expect(buy1.state.estate.perks.maxIntelBonus ?? 0).toBe(0);
+
+    // Clear the event cooldown so the same intel purchase can be made again.
+    state = {
+      ...buy1.state,
+      estate: { ...buy1.state.estate, crisisCooldowns: {} },
+    };
+    const enc2 = exploreTown(state, 'square', 'sq_peddler');
+    expect(enc2.ok).toBe(true);
+    const ptsBefore = enc2.state.points;
+    const buy2 = resolveExploreEvent(enc2.state, 1);
+    expect(buy2.ok).toBe(true);
+    expect(buy2.state.points).toBe(ptsBefore - 8);
+    expect(buy2.state.estate.perks.maxIntelBonus ?? 0).toBe(1);
   });
 
   it('computes M.Settle deterministic ledger and applies town, servant, vault, and debt interest updates', () => {

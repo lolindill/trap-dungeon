@@ -476,6 +476,7 @@ export interface ExploreEffectSpec {
   famePt?: number;
   order?: number;
   approval?: number;
+  food?: number;
   pop?: number;
   taxNext?: number;
   patience?: number;
@@ -526,7 +527,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Haggle Hard',
-        eff: { chance: { p: 0.5, success: { mp: 20 }, fail: {} } },
+        eff: { chance: { p: 0.5, success: { mp: 15 }, fail: { approval: -4 } } },
         outcomeText: 'haggled with the shady peddler in the town square',
       },
       {
@@ -615,7 +616,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
       },
       {
         label: 'Place Wagers',
-        eff: { chance: { p: 0.5, success: { mp: 25 }, fail: { mp: -5 } } },
+        eff: { chance: { p: 0.5, success: { mp: 15 }, fail: { mp: -3, approval: -3 } } },
         outcomeText: 'placed backroom wagers on the tavern brawl',
       },
     ],
@@ -636,7 +637,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
       },
       {
         label: 'Charge Viewing Fee',
-        eff: { mp: 6 },
+        eff: { mp: 4 },
         outcomeText: 'collected a private viewing fee from the collector',
       },
     ],
@@ -651,7 +652,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Collect Broker Fee',
-        eff: { mp: 12 },
+        eff: { mp: 8 },
         outcomeText: 'pocketed a brokerage cut at the slave market',
       },
       {
@@ -674,7 +675,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Send Turned Servant',
-        eff: { mp: 10, lust: 3 },
+        eff: { mp: 7, lust: 3 },
         outcomeText: 'dispatched a turned servant to attend the VIP patron',
       },
       {
@@ -715,12 +716,12 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Run Field Test',
-        eff: { chance: { p: 0.5, success: { mp: 20 }, fail: { mp: -5 } } },
+        eff: { chance: { p: 0.5, success: { mp: 15 }, fail: { mp: -3, food: -5 } } },
         outcomeText: 'field-tested an experimental trap assembly',
       },
       {
         label: 'Auction Scrap Metal',
-        eff: { mp: 10 },
+        eff: { mp: 7 },
         outcomeText: 'sold excess smithy scrap for mana crystals',
       },
     ],
@@ -755,7 +756,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Debrief Agent',
-        eff: { chance: { p: 0.6, success: { intel: 1 }, fail: { mp: 3 } } },
+        eff: { chance: { p: 0.6, success: { intel: 1 }, fail: {} } },
         outcomeText: 'debriefed a returning spy from the Adventurer Guild',
       },
       {
@@ -796,7 +797,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Accept Tribute',
-        eff: { mp: 8, fear: 3 },
+        eff: { mp: 5, fear: 3 },
         outcomeText: 'accepted the shrine cultists’ mana tithe',
       },
       {
@@ -842,7 +843,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
       },
       {
         label: 'Audit Ledgers Together',
-        eff: { mp: 8 },
+        eff: { mp: 5 },
         outcomeText: 'audited estate balances alongside Vesper',
       },
     ],
@@ -899,7 +900,7 @@ export const EXPLORE_EVENTS: readonly ExploreEventDef[] = [
     choices: [
       {
         label: 'Negotiate Principal',
-        eff: { chance: { p: 0.5, success: { debtCut: 30 }, fail: { patience: -5 } } },
+        eff: { chance: { p: 0.5, success: { debtCut: 12 }, fail: { patience: -5 } } },
         outcomeText: 'negotiated debt terms across Eleonora’s desk',
       },
       {
