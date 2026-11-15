@@ -30,6 +30,7 @@ import {
   rollRealmSituationsForNextWave,
   updateGuildPrepOnRaidEnd,
 } from './realm';
+import { resolveRaidModifiers } from './raidMods';
 import { clamp, pickOne, randInt } from './rng';
 
 function fearPenalty(state: GameState, hero: Hero, partyHasCleric: boolean): number {
@@ -230,6 +231,18 @@ export function resolveFloorEncounter(
     // Phase 3: Realm Situations, Hero Bonds & Stories, Guild Prep, EPIC Aura & Nemesis Memory
     const metaMods = computeHeroSituationAndMetaMods(state, h, floor, alive, party);
     mods += metaMods.totalMod;
+    // Ticket 15 raid-mods seam: expedition aftereffects + mole intel hero mods
+    // (applied after metaMods; audit notes reported once per room below).
+    const raidMods = resolveRaidModifiers(state, {
+      floorNum: floor.floor,
+      isFirstRoom: firstRoom,
+      hasMonsterOnFloor: activeMonstersOnFloor.length > 0,
+      heroClassKey: h.classKey,
+    });
+    mods += raidMods.heroModDelta;
+    if (h.slot === alive[0]?.slot && raidMods.notes.length > 0) {
+      detailLines.push(`- ${raidMods.notes.join('; ')}`);
+    }
     if (sanctuaryAllyBonus > 0 && h.slot !== gmHero?.slot) {
       mods += sanctuaryAllyBonus;
     }
@@ -358,7 +371,9 @@ export function resolveFloorEncounter(
         if (h.status === 'dead') fearGain += CFG.FEAR.KILL;
       }
     } else if (beatKey === 'narrow') {
-      if (h.traits.includes('nimble')) {
+      if (raidMods.critRoomSaveChance > 0 && Math.random() < raidMods.critRoomSaveChance) {
+        afterNotes.push('workshop critical-room save prevented injury');
+      } else if (h.traits.includes('nimble')) {
         afterNotes.push('slipped through unhurt');
       } else if (h.traits.includes('ironhide') && !h.injIgnored) {
         h.injIgnored = true;
@@ -679,6 +694,35 @@ export function advanceRaidStep(state: GameState): {
   }
 
   if (outcome === 'partial' || outcome === 'breach') {
+    // Ticket 15 raid-mods seam: core-room capture (estate coreCaptureBonus +
+    // crisis `core_guard`). Survivors reaching the Core may be caught by the
+    // guard instead of breaching; outcome downgrades only when captures happen.
+    const coreMods = resolveRaidModifiers(state, {
+      floorNum: 0,
+      isFirstRoom: false,
+      hasMonsterOnFloor: false,
+    });
+    let coreCaptured = 0;
+    if (coreMods.coreCaptureBonus > 0) {
+      for (const h of party) {
+        if (h.status === 'alive' && Math.random() < coreMods.coreCaptureBonus) {
+          h.status = 'captured';
+          h.fallenFloor = state.floorCursor > 0 ? state.floorCursor : 7;
+          h.fallenWave = state.wave;
+          coreCaptured += 1;
+          detailLines.push(`- ${h.name}: CAPTURED by the core guard at the Core Room!`);
+        }
+      }
+    }
+    if (coreCaptured > 0) {
+      const aliveAtCore = party.filter((h) => h.status === 'alive').length;
+      if (aliveAtCore === 0) {
+        outcome = 'wipe';
+        detailLines.push('- The core guard repels the raid — no one breaches the Core.');
+      } else if (outcome === 'breach') {
+        outcome = 'partial';
+      }
+    }
     for (const h of party) {
       if (h.status === 'alive') {
         detailLines.push(`- ${h.name}: BREACHED the Core Room alive.`);

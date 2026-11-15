@@ -9,6 +9,7 @@ import {
   resetPendingGrades,
 } from './dungeon';
 import { generateParty } from './heroes';
+import { resolveRaidModifiers } from './raidMods';
 import { clamp } from './rng';
 import { withWaveStartSnapshot } from './saveLoad';
 
@@ -59,10 +60,16 @@ export function finishBuildPhase(state: GameState): GameState {
   const nextWave = state.wave + 1;
   const prep = buildPrepListPayload(state.floors);
   const generated = generateParty(state, nextWave);
+  // Ticket 15 raid-mods seam: prep intel (Lens relic + estate + crisis `intel`;
+  // crisis `intel_zero` forces the whole wave's intel to 0).
+  const prepMods = resolveRaidModifiers(state, {
+    floorNum: 0,
+    isFirstRoom: false,
+    hasMonsterOnFloor: false,
+  });
   const hasLens = state.relics.owned.includes('lens');
-  const party = hasLens
-    ? generated.party.map((h) => ({ ...h, intel: h.intel + 1 }))
-    : generated.party;
+  const intel = prepMods.prepIntelZero ? 0 : (hasLens ? 1 : 0) + prepMods.prepIntelDelta;
+  const party = generated.party.map((h) => ({ ...h, intel }));
 
   const pendingNote =
     prep.newTrapIds.length > 0
