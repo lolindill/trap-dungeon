@@ -11,6 +11,10 @@ import {
 } from './dayLoop';
 import { checkDebtPayoffEnding, triggerBankruptEnding } from './endings';
 import { grantOfficerAffinity } from './officers';
+import {
+  SELLSWORD_RAID_MOD_KEY,
+  SELLSWORD_RAID_MOD_VALUE,
+} from './raidMods';
 import { clamp, pickOne } from './rng';
 
 const DEBT_MIN_SCHEDULE = [30, 60, 120, 180, 240, 300, 360] as const;
@@ -1164,5 +1168,91 @@ export function draftDebtFromVault(
     },
     message: msg,
     artUrl: resolveSceneAsset('dk_debt_ontime'),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 24: Sellsword Contract — one-raid all-floor DC vault sink
+// ---------------------------------------------------------------------------
+// 100 vault MP hires a sellsword company for the NEXT raid: +2 DC on every
+// floor for exactly one raid. The contract occupies a raid-mod slot — it
+// appends an `all_dc` entry to `crises.activeRaidMods` (ticket 15's seam), so
+// it competes with crisis mods inside `resolveRaidModifiers`' council caps
+// (allFloors bucket [-4, +2], total [-4, +4]) and never stacks outside the
+// resolver. Ticket 16's settlement purge (`all_dc` is in
+// CONSUMED_RAID_MOD_KEYS) expires it after that one raid — no expiry code
+// here. Vault-only: cash MP never leaves `points` through this action.
+//
+// Purchase site: the Debt Collection visit (same flow as the Vault Draft —
+// collection day is the estate's vault-spending moment). One contract at a
+// time: while an `all_dc` entry is pending, the slot is occupied and a second
+// purchase is rejected.
+
+export const SELLSWORD_CONTRACT_COST_MP = 100;
+
+export interface SellswordContractInfo {
+  vaultMp: number;
+  costMp: number;
+  dcPerFloor: number;
+  /** A sellsword is under contract for the next raid (slot occupied). */
+  pending: boolean;
+  canHire: boolean;
+  reason: string;
+}
+
+export function getSellswordContractInfo(state: GameState): SellswordContractInfo {
+  const vaultMp = Math.max(0, Math.floor(state.estate.vaultMp));
+  const pending = (state.crises?.activeRaidMods ?? []).some(
+    (m) => m.key === SELLSWORD_RAID_MOD_KEY
+  );
+
+  let reason = '';
+  if (state.mode !== 'debt') {
+    reason = 'The sellsword contract is only offered during Debt Collection visits.';
+  } else if (pending) {
+    reason = 'A sellsword is already under contract for the next raid (one at a time).';
+  } else if (vaultMp < SELLSWORD_CONTRACT_COST_MP) {
+    reason = `Vault lacks the ${SELLSWORD_CONTRACT_COST_MP} MP fee.`;
+  }
+
+  return {
+    vaultMp,
+    costMp: SELLSWORD_CONTRACT_COST_MP,
+    dcPerFloor: SELLSWORD_RAID_MOD_VALUE,
+    pending,
+    canHire: !reason,
+    reason,
+  };
+}
+
+export function hireSellswordContract(state: GameState): DebtActionResult {
+  const info = getSellswordContractInfo(state);
+  if (info.reason) {
+    return {
+      ok: false,
+      state: { ...state, flash: info.reason },
+      message: info.reason,
+    };
+  }
+
+  const next: GameState = {
+    ...state,
+    estate: {
+      ...state.estate,
+      vaultMp: Math.max(0, state.estate.vaultMp - SELLSWORD_CONTRACT_COST_MP),
+    },
+    crises: {
+      ...state.crises,
+      activeRaidMods: [
+        ...state.crises.activeRaidMods,
+        { key: SELLSWORD_RAID_MOD_KEY, value: SELLSWORD_RAID_MOD_VALUE },
+      ],
+    },
+    flash: `Sellsword Contract signed — +${SELLSWORD_RAID_MOD_VALUE} DC on every floor for the next raid (-${SELLSWORD_CONTRACT_COST_MP} vault MP).`,
+  };
+  return {
+    ok: true,
+    state: next,
+    message: `Hired a sellsword for the next raid (+${SELLSWORD_RAID_MOD_VALUE} all-floor DC, one raid only).`,
   };
 }

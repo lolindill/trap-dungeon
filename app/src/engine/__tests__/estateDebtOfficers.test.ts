@@ -25,12 +25,15 @@ import {
   entertainEleonora,
   getDebtSummary,
   getEleonoraVisitSceneContext,
+  getSellswordContractInfo,
   getVaultDraftInfo,
   handoverPrisonerForDebt,
+  hireSellswordContract,
   payDebt,
   requestDebtExtension,
   resolveDebtVisit,
   rollDebtQuests,
+  SELLSWORD_CONTRACT_COST_MP,
   startOrProgressGraceQuest,
   takeExtraLoan,
 } from '../debt';
@@ -67,7 +70,12 @@ import {
 import { getJobSettleYield, getJobYieldPreview } from '../prison';
 import { applyWaveSettlement } from '../raid';
 import { createInitialGameState } from '../saveLoad';
-import { resolveRaidModifiers } from '../raidMods';
+import {
+  CONSUMED_RAID_MOD_KEYS,
+  resolveRaidModifiers,
+  SELLSWORD_RAID_MOD_KEY,
+  SELLSWORD_RAID_MOD_VALUE,
+} from '../raidMods';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -1515,5 +1523,162 @@ describe('Ticket 18: Trap Upgrade Discount & Estate buildCostMult Installs', () 
     // Helper sanity: rounding rule is floor via getEstateBuildCost.
     expect(getEstateBuildCost(base, 101)).toBe(101); // mult 1.0
     expect(getEstateBuildCost(lowOrder, 101)).toBe(121); // 101 * 1.2 = 121.2
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 24: Sellsword Contract — 100 vault MP -> +2 all-floor DC, one raid
+// ---------------------------------------------------------------------------
+describe('Ticket 24: Sellsword Contract — one-raid all-floor DC vault sink', () => {
+  function makeSellswordState(
+    overrides?: Partial<ReturnType<typeof createInitialGameState>>
+  ) {
+    return makeDayState({
+      mode: 'debt',
+      wave: 3,
+      points: 80, // vault-only sink: cash MP must stay untouched
+      estate: { ...createInitialGameState().estate, vaultMp: 250 },
+      debt: {
+        ...createInitialGameState().debt,
+        step: 2,
+        dueWave: 3,
+      },
+      ...overrides,
+    });
+  }
+
+  const RESOLVER_CTX = { floorNum: 2, isFirstRoom: false, hasMonsterOnFloor: false };
+
+  it('binds the seam constants: all_dc +2 and the key is settlement-consumed', () => {
+    expect(SELLSWORD_RAID_MOD_KEY).toBe('all_dc');
+    expect(SELLSWORD_RAID_MOD_VALUE).toBe(2);
+    expect(SELLSWORD_CONTRACT_COST_MP).toBe(100);
+    // Expiry rides ticket 16's settlement purge — no separate lifecycle code.
+    expect(CONSUMED_RAID_MOD_KEYS).toContain('all_dc');
+  });
+
+  it('hires for exactly 100 vault MP, appends all_dc +2, and leaves cash untouched', () => {
+    const state = makeSellswordState();
+    const info = getSellswordContractInfo(state);
+    expect(info.canHire).toBe(true);
+    expect(info.pending).toBe(false);
+    expect(info.costMp).toBe(100);
+    expect(info.dcPerFloor).toBe(2);
+
+    const res = hireSellswordContract(state);
+    expect(res.ok).toBe(true);
+    expect(res.state.estate.vaultMp).toBe(250 - 100); // X -> X - 100
+    expect(res.state.points).toBe(80); // vault-only: cash untouched
+    expect(res.state.crises.activeRaidMods).toContainEqual({
+      key: 'all_dc',
+      value: 2,
+    });
+    expect(getSellswordContractInfo(res.state).pending).toBe(true);
+  });
+
+  it('rejects a second purchase while one is pending, a short vault, and non-visit modes', () => {
+    const hired = hireSellswordContract(makeSellswordState()).state;
+
+    // Slot occupied: no stacking a second sellsword onto the same raid.
+    const second = hireSellswordContract(hired);
+    expect(second.ok).toBe(false);
+    expect(second.state.estate.vaultMp).toBe(150); // state unchanged on fail
+    expect(second.state.crises.activeRaidMods).toHaveLength(1);
+
+    // Vault too poor for the 100 MP fee.
+    const broke = hireSellswordContract(
+      makeSellswordState({
+        estate: { ...createInitialGameState().estate, vaultMp: 99 },
+      })
+    );
+    expect(broke.ok).toBe(false);
+    expect(broke.state.estate.vaultMp).toBe(99);
+
+    // Only offered during Debt Collection visits.
+    expect(hireSellswordContract(makeSellswordState({ mode: 'estate' })).ok).toBe(false);
+  });
+
+  it('resolver reads all_dc as an allFloors source: +2 on every floor from a neutral estate', () => {
+    const hired = hireSellswordContract(makeSellswordState()).state;
+    const r = resolveRaidModifiers(hired, RESOLVER_CTX);
+    expect(r.allFloorsDcDelta).toBe(2);
+    expect(r.totalDcDelta).toBe(2);
+    expect(r.notes).toContain('activeRaidMods:all_dc +2 (sellsword contract)');
+  });
+
+  it('bucket cap: with other sources pushing allFloors past +2, the sellsword is clamped, not added', () => {
+    // Arcane Workshop Lv.3 gives estate allFloors +1; sellsword adds +2 -> raw 3.
+    const hired = hireSellswordContract(
+      makeSellswordState({
+        estate: {
+          ...createInitialGameState().estate,
+          vaultMp: 250,
+          facilities: {
+            ...createInitialGameState().estate.facilities,
+            workshop: 3,
+          },
+        },
+      })
+    ).state;
+    const r = resolveRaidModifiers(hired, RESOLVER_CTX);
+    expect(r.allFloorsDcDelta).toBe(2); // clamped to the bucket cap, not 3
+    expect(r.totalDcDelta).toBe(2);
+    expect(r.notes).toContain('estate:allFloors +1');
+    expect(r.notes).toContain('activeRaidMods:all_dc +2 (sellsword contract)');
+    expect(r.notes).toContain('capped: allFloors clamped to +2');
+  });
+
+  it('total cap: firstRoom + sellsword allFloors pushing past +4 sheds firstRoom, allFloors held at +2', () => {
+    let stacked = hireSellswordContract(makeSellswordState()).state;
+    stacked = {
+      ...stacked,
+      town: { ...stacked.town, approval: 65 }, // estate firstRoom +1
+      estate: {
+        ...stacked.estate,
+        facilities: { ...stacked.estate.facilities, grail: 1 }, // firstRoom +1
+      },
+      officers: {
+        ...stacked.officers,
+        lilim: { ...stacked.officers.lilim, aff: 120, stage: 3 }, // firstRoom +4
+      },
+    };
+    const r = resolveRaidModifiers(stacked, {
+      floorNum: 1,
+      isFirstRoom: true,
+      hasMonsterOnFloor: false,
+    });
+    // firstRoom raw 6 -> bucket-clamped 3; allFloors (sellsword) 2; total 5 -> cap 4.
+    expect(r.firstRoomDcDelta).toBe(2); // sheds 1 first
+    expect(r.allFloorsDcDelta).toBe(2);
+    expect(r.totalDcDelta).toBe(4);
+    expect(r.notes).toContain('capped: total DC clamped to +4');
+  });
+
+  it('expires after exactly one raid via settlement purge, then a re-purchase is possible', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const hired = hireSellswordContract(makeSellswordState()).state;
+    expect(hired.crises.activeRaidMods).toContainEqual({ key: 'all_dc', value: 2 });
+
+    // The one raid it bought: resolver sees it...
+    expect(resolveRaidModifiers(hired, RESOLVER_CTX).allFloorsDcDelta).toBe(2);
+
+    // ...then the wave settles and ticket 16's purge removes the contract.
+    const settled = applyWaveSettlement(
+      { ...hired, mode: 'result', party: [] },
+      'wipe'
+    );
+    expect(settled.crises.activeRaidMods).toHaveLength(0);
+    expect(settled.estate.vaultMp).toBe(150); // the 100 MP stay spent
+    expect(resolveRaidModifiers(settled, RESOLVER_CTX).allFloorsDcDelta).toBe(0);
+    expect(getSellswordContractInfo(settled).pending).toBe(false);
+
+    // Next collection visit: the slot is free again.
+    const rehire = hireSellswordContract({ ...settled, mode: 'debt' });
+    expect(rehire.ok).toBe(true);
+    expect(rehire.state.estate.vaultMp).toBe(150 - 100);
+    expect(rehire.state.crises.activeRaidMods).toContainEqual({
+      key: 'all_dc',
+      value: 2,
+    });
   });
 });
