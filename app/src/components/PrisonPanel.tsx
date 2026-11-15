@@ -27,6 +27,7 @@ import {
   getConversionCap,
   getConversionCount,
   getExecutePreview,
+  getAuctionTerms,
   getFreeTrappedFloors,
   getHarshDeathChance,
   getInterrogateChance,
@@ -743,7 +744,7 @@ export function PrisonPanel({
                     const risks = getSaleRiskOdds(state, activeCaptive);
                     const exec = getExecutePreview(state, activeCaptive);
                     const hasMarket = (state.estate.facilities.market ?? 0) >= 1;
-                    const auctionPrice = Math.floor(ransom.amount * 1.1);
+                    const auctionTerms = getAuctionTerms(state, activeCaptive);
                     const fateLocked = !dayActive || Boolean(state.estate.activeCrisis);
 
                     return (
@@ -807,12 +808,12 @@ export function PrisonPanel({
                             <div className="dk-row">
                               <span>⚖ Slave Market Auction</span>
                               <span className="ap-chip">
-                                {fateLocked ? '🔒 DAY' : `+${auctionPrice} MP`}
+                                {fateLocked ? '🔒 DAY' : `+${auctionTerms.netClean} MP`}
                               </span>
                             </div>
                             <small>
                               {hasMarket
-                                ? '1.1× Ransom with 0% sale risk'
+                                ? `0.85× Ransom · ${Math.round(auctionTerms.fizzle * 100)}% fizzle (0.5×) · Fee ${auctionTerms.fee > 0 ? `${auctionTerms.fee} MP` : 'waived'}`
                                 : 'Requires Slave Market Lv.1'}
                             </small>
                           </button>
