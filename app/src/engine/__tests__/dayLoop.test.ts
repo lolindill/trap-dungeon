@@ -339,6 +339,38 @@ describe('Day Log queuing, Quick Settle & Batched AI Journal prompt', () => {
     expect(summary).toContain('+10 MP');
   });
 
+  it('routes quick officer actions through calcOfficerAffGain so estate investments raise Day-screen gains', () => {
+    let state = startNewDay({ ...createInitialGameState(), wave: 2, points: 200 });
+    // Same fixture shape as estateDebtOfficers.test.ts:450 (Manor Lv2 = ×1.6, Bath Lv2 = +2 flat)
+    state = {
+      ...state,
+      estate: {
+        ...state.estate,
+        facilities: { manor: 2, bath: 2, trade: 1 },
+      },
+      officers: {
+        ...state.officers,
+        vesper: { ...state.officers.vesper, aff: 18, stage: 0 },
+      },
+    };
+
+    // A bare officer would gain +3; investments make it floor((3 + 2) * 1.6 * 1) = 8
+    const oRes = performQuickOfficerAction(state, 'vesper', 'time');
+    expect(oRes.ok).toBe(true);
+    expect(oRes.state.officers.vesper.aff).toBe(26); // 18 + 8, crosses Stage 1 (20)
+    expect(oRes.state.officers.vesper.stage).toBe(1);
+    const logged = oRes.state.dayLines[oRes.state.dayLines.length - 1];
+    expect(logged.text).toContain('+8 Aff');
+    expect(logged.text).toContain('+2 bath');
+    expect(logged.text).toContain('×1.6 manor');
+
+    // Gift path: floor((4 + 2) * 1.6 * 1) = 9, and the 40 MP cost is unchanged
+    const gift = performQuickOfficerAction(oRes.state, 'lilim', 'gift');
+    expect(gift.ok).toBe(true);
+    expect(gift.state.officers.lilim.aff).toBe(9);
+    expect(gift.state.points).toBe(160); // 200 - 40 MP
+  });
+
   it('batches up to 12 Day Log entries prioritizing ★ star scenes per 14_DK_SYS_DayJournal', () => {
     const lines = Array.from({ length: 16 }, (_, i) => ({
       text: `Entry ${i + 1}`,

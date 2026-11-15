@@ -13,6 +13,7 @@ import {
   type NavTabId,
 } from '../engine/dayLoop';
 import { getFloorDC } from '../engine/dungeon';
+import { calcOfficerAffGain } from '../engine/officers';
 import type { GameState, OfficerKey } from '../types/game';
 import { GradeBadge } from './GradeBadge';
 
@@ -629,7 +630,7 @@ export function DayPanel({
               <span>Spend Time</span>
               {apChip}
             </div>
-            <small>+3 Affinity · Queued to Day Log</small>
+            <small>+{calcOfficerAffGain(state, selectedOfficer, 3)} Affinity · Queued to Day Log</small>
           </button>
 
           <button
@@ -642,7 +643,7 @@ export function DayPanel({
               <span>Give Gift (40 MP)</span>
               {apChip}
             </div>
-            <small>+4 Affinity · Queued to Day Log</small>
+            <small>+{calcOfficerAffGain(state, selectedOfficer, 4)} Affinity · Queued to Day Log</small>
           </button>
         </div>
       </div>

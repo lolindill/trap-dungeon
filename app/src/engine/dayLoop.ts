@@ -1,3 +1,4 @@
+import { calcOfficerAffGain } from './officers';
 import { clamp } from './rng';
 import { withWaveStartSnapshot } from './saveLoad';
 import type {
@@ -510,15 +511,31 @@ export function performQuickOfficerAction(
   }
 
   const prev = state.officers[officer];
-  const gain = mode === 'gift' ? 4 : 3;
+  const baseGain = mode === 'gift' ? 4 : 3;
+  // Delegate to the same formula as talkToOfficer/giftOfficer so estate
+  // investments (bath/trade flats, manor multiplier, stage decay) apply here too.
+  const gain = calcOfficerAffGain(state, officer, baseGain);
   const nextAff = prev.aff + gain;
   const nextStage = Math.max(prev.stage, getOfficerStageForAff(officer, nextAff));
   const stagedUp = nextStage > prev.stage;
   const name = officer.charAt(0).toUpperCase() + officer.slice(1);
+
+  // Short multiplier breakdown only when the gain is not the bare base roll.
+  const fac = state.estate.facilities;
+  const flat = officer === 'eleonora' ? fac.trade ?? 0 : fac.bath ?? 0;
+  const manorMult = 1 + 0.3 * (fac.manor ?? 0);
+  // Display mirror of officers.ts STAGE_GAIN_MULT (not exported there; keep in sync).
+  const stageDecay = [1, 0.9, 0.75, 0.6, 0.5][Math.min(prev.stage, 4)];
+  const parts: string[] = [];
+  if (flat > 0) parts.push(`+${flat} ${officer === 'eleonora' ? 'trade' : 'bath'}`);
+  if (manorMult !== 1) parts.push(`×${manorMult.toFixed(1)} manor`);
+  if (prev.stage > 0) parts.push(`×${stageDecay} stage`);
+  const breakdown = parts.length > 0 ? ` [base ${baseGain}, ${parts.join(', ')}]` : '';
+
   const label =
     mode === 'gift'
-      ? `Gift to ${name} (-40 MP, +${gain} Aff${stagedUp ? ` → Stage ${nextStage}!` : ''})`
-      : `Spent time with ${name} (+${gain} Aff${stagedUp ? ` → Stage ${nextStage}!` : ''})`;
+      ? `Gift to ${name} (-40 MP, +${gain} Aff${breakdown}${stagedUp ? ` → Stage ${nextStage}!` : ''})`
+      : `Spent time with ${name} (+${gain} Aff${breakdown}${stagedUp ? ` → Stage ${nextStage}!` : ''})`;
 
   const spent = spendDayAp(state, actionKey, {
     text: label,
