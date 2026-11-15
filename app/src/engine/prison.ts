@@ -1866,6 +1866,48 @@ export function sellPrisoner(
   };
 }
 
+// Auction repricing (Ticket 20): the old flat 1.1x with zero risk made the
+// whole 4-buyer system pointless (buyer EV ~0.872 through the risk bands).
+// New table: clean sale pays 0.85x ransom, a 10% "bidding fizzle" pays 0.5x,
+// and a 10 MP listing fee is charged (waived at Market Lv.3 or Eleonora S.3).
+// Gross EV ~0.815x < buyer EV ~0.872x, and the best buyer keeps its niche on
+// hot-buyer days (x1.3). The fizzle band stays live through getSaleRiskOdds:
+// fizzle = clamp(stiff + 0.03, 0.02, 0.10) -> baseline 0.10, halved stiff
+// (order >= 70 or Vesper S.3/S.4) lowers it to ~0.065.
+export const AUCTION_CLEAN_RATE = 0.85;
+export const AUCTION_FIZZLE_RATE = 0.5;
+export const AUCTION_LISTING_FEE = 10;
+
+export interface AuctionTerms {
+  ransom: number;
+  grossClean: number;
+  grossFizzle: number;
+  fee: number;
+  netClean: number;
+  netFizzle: number;
+  fizzle: number;
+}
+
+export function getAuctionTerms(state: GameState, p: Prisoner): AuctionTerms {
+  const ransom = calculateRansom(state, p, { forSale: true }).amount;
+  const grossClean = Math.floor(ransom * AUCTION_CLEAN_RATE);
+  const grossFizzle = Math.floor(ransom * AUCTION_FIZZLE_RATE);
+  const feeWaived =
+    facLv(state, 'market') >= 3 || state.officers.eleonora.stage >= 3;
+  const fee = feeWaived ? 0 : AUCTION_LISTING_FEE;
+  const odds = getSaleRiskOdds(state, p);
+  const fizzle = clamp(odds.stiff + 0.03, 0.02, 0.1);
+  return {
+    ransom,
+    grossClean,
+    grossFizzle,
+    fee,
+    netClean: Math.max(1, grossClean - fee),
+    netFizzle: Math.max(1, grossFizzle - fee),
+    fizzle,
+  };
+}
+
 export function auctionPrisoner(
   state: GameState,
   pid: number
@@ -1904,11 +1946,16 @@ export function auctionPrisoner(
     };
   }
   const prisoner = state.prisoners[idx];
-  const price = Math.floor(
-    calculateRansom(state, prisoner, { forSale: true }).amount * 1.1
-  );
+  const terms = getAuctionTerms(state, prisoner);
+  const roll = Math.random();
+  const fizzled = roll < terms.fizzle;
+  const price = fizzled ? terms.netFizzle : terms.netClean;
+  const feeNote =
+    terms.fee > 0 ? ` (listing fee -${terms.fee} MP)` : ' (fee waived)';
   const imageUrl = resolvePrisonAsset('dk_pa_auction', prisoner.gender);
-  const summary = `Auctioned with zero sale risk for +${price} MP`;
+  const summary = fizzled
+    ? `Bidding fizzled — scrap price +${price} MP${feeNote}`
+    : `Auctioned for +${price} MP${feeNote} · ${Math.round(terms.fizzle * 100)}% fizzle risk`;
 
   const nextState = appendDayLogLine(
     {
@@ -1918,7 +1965,9 @@ export function auctionPrisoner(
       flash: `${prisoner.name} auctioned for +${price} MP!`,
     },
     {
-      text: `${prisoner.name} auctioned at the Slave Market (+${price} MP).`,
+      text: fizzled
+        ? `${prisoner.name} auctioned at the Slave Market — bidding fizzled, sold at scrap price (+${price} MP).`
+        : `${prisoner.name} auctioned at the Slave Market (+${price} MP).`,
       star: true,
       kind: 'auction',
       art: imageUrl,
@@ -1934,7 +1983,9 @@ export function auctionPrisoner(
       nextState,
       prisoner,
       'Slave Market Auction',
-      `sold on the auction block to the highest bidder for ${price} MP`
+      fizzled
+        ? `auctioned at scrap price when the bidding fizzled for ${price} MP`
+        : `sold on the auction block to the highest bidder for ${price} MP`
     ),
     imageUrl,
     isKeyMoment: true,

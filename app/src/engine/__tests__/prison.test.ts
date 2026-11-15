@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CFG } from '../../data/constants';
 import {
+  BUYERS,
   PRISON_JOBS,
   PRISON_PACTS,
   resolveJobAsset,
@@ -22,6 +23,7 @@ import {
   executePrisonPact,
   getAllBuyerQuotes,
   getHarshDeathChance,
+  getAuctionTerms,
   getInterrogateChance,
   getJobAptitudeStars,
   getJobYieldPreview,
@@ -468,5 +470,132 @@ describe('Ransom, Sale Risks, Disposal & M/F Parity', () => {
     expect(fatal.died).toBe(true);
     expect(fatal.state.prisoners.some((p) => p.pid === 1)).toBe(false);
     expect(fatal.state.kills).toBe(1);
+  });
+});
+
+describe('Auction Repricing (Ticket 20)', () => {
+  it('prices auction at 0.85x clean / 0.5x fizzle with 10 MP fee waived at Market Lv.3 or Eleonora S.3', () => {
+    const c = makeCaptive(); // grade B base 49, corr 20
+    const mkt1 = makeDayState([c], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 1 } },
+    });
+    // ransom: 49 base x1.10 Corr x1.05 Market = 57
+    expect(calculateRansom(mkt1, c, { forSale: true }).amount).toBe(57);
+    const t1 = getAuctionTerms(mkt1, c);
+    expect(t1.grossClean).toBe(48); // floor(57 x 0.85)
+    expect(t1.grossFizzle).toBe(28); // floor(57 x 0.5)
+    expect(t1.fee).toBe(10);
+    expect(t1.netClean).toBe(38);
+    expect(t1.netFizzle).toBe(18);
+    expect(t1.fizzle).toBeCloseTo(0.1, 5); // stiff 0.07 + 0.03
+
+    const mkt3 = makeDayState([c], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 3 } },
+    });
+    expect(calculateRansom(mkt3, c, { forSale: true }).amount).toBe(62); // x1.15 Market
+    const t3 = getAuctionTerms(mkt3, c);
+    expect(t3.grossClean).toBe(52);
+    expect(t3.fee).toBe(0); // listing fee waived at Market Lv.3
+    expect(t3.netClean).toBe(52);
+    expect(t3.netFizzle).toBe(31);
+
+    // Eleonora S.3 waives the fee too (auctionFeeZero perk promise in estateData)
+    const elS3 = makeDayState([c], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 1 } },
+      officers: {
+        ...createInitialGameState().officers,
+        eleonora: { aff: 0, stage: 3, cooldowns: {}, usedOnce: {} },
+      },
+    });
+    expect(getAuctionTerms(elS3, c).fee).toBe(0);
+
+    // EV sanity: gross auction EV stays under the buyer baseline of 0.872x ransom
+    expect(0.9 * t1.grossClean + 0.1 * t1.grossFizzle).toBeLessThan(0.872 * t1.ransom);
+    expect(0.9 * t3.grossClean + 0.1 * t3.grossFizzle).toBeLessThan(0.872 * t3.ransom);
+  });
+
+  it('fires the deterministic fizzle branch and keeps the risk band live via getSaleRiskOdds', () => {
+    const c = makeCaptive();
+    const state = makeDayState([c], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 1 } },
+    });
+
+    // Roll below fizzle 0.10 -> bidding fizzles, scrap price 0.5x minus fee
+    vi.spyOn(Math, 'random').mockReturnValue(0.05);
+    const fizzled = auctionPrisoner(state, 1);
+    expect(fizzled.ok).toBe(true);
+    expect(fizzled.state.points).toBe(state.points + 18); // floor(57x0.5)=28 - 10 fee
+    expect(fizzled.summary).toContain('fizzled');
+    expect(fizzled.state.prisoners.some((p) => p.pid === 1)).toBe(false);
+
+    // Roll above -> clean sale 0.85x minus fee
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const clean = auctionPrisoner(state, 1);
+    expect(clean.ok).toBe(true);
+    expect(clean.state.points).toBe(state.points + 38); // floor(57x0.85)=48 - 10 fee
+    expect(clean.summary).not.toContain('fizzled');
+    expect(clean.summary).toContain('38');
+
+    // Live odds: Vesper S.4 halves stiff -> fizzle drops to 0.065
+    const v4 = makeDayState([makeCaptive()], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 1 } },
+      officers: {
+        ...createInitialGameState().officers,
+        vesper: { aff: 0, stage: 4, cooldowns: {}, usedOnce: {} },
+      },
+    });
+    expect(getSaleRiskOdds(v4, makeCaptive()).stiff).toBeCloseTo(0.035, 5);
+    expect(getAuctionTerms(v4, makeCaptive()).fizzle).toBeCloseTo(0.065, 5);
+    // Baseline stiff still 0.07 -> baseline fizzle 0.10
+    expect(getSaleRiskOdds(state, c).stiff).toBeCloseTo(0.07, 5);
+  });
+
+  it('keeps auction EV below buyer EV on every hot-buyer day and keeps pdress x1.2 on buyer & auction paths', () => {
+    const c = makeCaptive();
+    const base = makeDayState([c], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 1 } },
+    });
+    const terms = getAuctionTerms(base, c);
+    const auctionEv = 0.9 * terms.netClean + 0.1 * terms.netFizzle;
+
+    // Buyer EV through the risk bands: escape pays 0, stiff 0.3x, cut 0.7x,
+    // bonus 1.2x, the rest clean. Auction EV must sit below it every day,
+    // including when the best buyer is the hot x1.3 buyer.
+    const odds = getSaleRiskOdds(base, c);
+    const buyerEvMult =
+      odds.stiff * 0.3 +
+      odds.cut * 0.7 +
+      odds.bonus * 1.2 +
+      (1 - odds.escape - odds.stiff - odds.cut - odds.bonus);
+    for (let day = 1; day <= BUYERS.length; day++) {
+      const st = { ...base, day };
+      const best = Math.max(...getAllBuyerQuotes(st, c).map((q) => q.price));
+      expect(auctionEv).toBeLessThan(best * buyerEvMult);
+    }
+
+    // pdress x1.2 applies on the buyer path...
+    const plain = makeCaptive({ pid: 2, corr: 0 });
+    const undressed = calculateRansom(base, plain, { forSale: true, buyerId: 'slaver' });
+    const dressed = calculateRansom(base, { ...plain, dressed: true }, {
+      forSale: true,
+      buyerId: 'slaver',
+    });
+    expect(undressed.amount).toBe(75); // 49 x1.05 Market x1.463 Slavers
+    expect(dressed.amount).toBe(90); // ... x1.20 Dressed
+    expect(dressed.breakdown).toContain('Dressed ×1.20');
+    // ...and on the auction path (auction prices off the same ransom, no buyer mult)
+    expect(getAuctionTerms(base, plain).ransom).toBe(51); // 49 x1.05 Market
+    expect(getAuctionTerms(base, { ...plain, dressed: true }).ransom).toBe(62); // x1.2
+
+    // The pdress pact itself flags the captive for the next sale bonus
+    const preDress = makeDayState([makeCaptive({ pid: 3 })], {
+      estate: { ...createInitialGameState().estate, facilities: { market: 1 } },
+    });
+    const pact = executePrisonPact(preDress, 3, 'pdress');
+    expect(pact.ok).toBe(true);
+    expect(pact.state.prisoners[0].dressed).toBe(true);
+    // pdress also bumps Shame +4, crossing the first Shame mark threshold
+    // (Marks x1.08), so ransom = 49 x1.10 Corr x1.08 Marks x1.20 Dressed x1.05 Market
+    expect(getAuctionTerms(pact.state, pact.state.prisoners[0]).ransom).toBe(73);
   });
 });
