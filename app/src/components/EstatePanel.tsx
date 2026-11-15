@@ -167,6 +167,9 @@ export function EstatePanel({
             : `🔒 DAY — AP actions unlock in Day (AP) phase (Current: ${state.mode.toUpperCase()}).`}
         </span>
         <span className="dk-badge y">Vault: {state.estate.vaultMp}/{150 * state.town.lv} MP</span>
+        <span className="dk-badge c" title="Central trap-parts stock — earned from monster kills, butchering and expeditions; spent on Force Evolution.">
+          ⚙ Parts: {state.parts}
+        </span>
       </div>
 
       {/* Inner Estate Sub-navigation */}

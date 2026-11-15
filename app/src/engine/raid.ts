@@ -103,7 +103,7 @@ export function resolveFloorEncounter(
   nextMonsters: MonsterInstance[];
   nextFloors: FloorState[];
   nextPrisoners: Prisoner[];
-  nextLootParts: number;
+  nextParts: number;
   nextApUsed: Record<string, boolean>;
 } {
   const party = partyInput.map((h) => ({ ...h }));
@@ -119,7 +119,7 @@ export function resolveFloorEncounter(
     combatSlots: (fl.combatSlots ?? []).map((s) => ({ ...s })),
   }));
   let nextPrisoners = state.prisoners.map((p) => ({ ...p }));
-  let nextLootParts = state.expedition.lootParts;
+  let nextParts = state.parts;
 
   const combatInfo = getFloorCombatBonus(state, floor);
   const floorCombatSlots = getFloorCombatSlots(floor);
@@ -517,7 +517,7 @@ export function resolveFloorEncounter(
               }
             : fl
         );
-        nextLootParts += 1;
+        nextParts += 1;
         detailLines.push(`- ${lostName} was SLAIN defending ${floor.floor}F (+1 Trap Parts).`);
         continue;
       }
@@ -577,7 +577,7 @@ export function resolveFloorEncounter(
     nextMonsters,
     nextFloors,
     nextPrisoners,
-    nextLootParts,
+    nextParts,
     nextApUsed,
   };
 }
@@ -630,7 +630,7 @@ export function advanceRaidStep(state: GameState): {
   let nextMonsters = state.monsters;
   let nextFloors = state.floors;
   let nextPrisoners = state.prisoners;
-  let nextLootParts = state.expedition.lootParts;
+  let nextParts = state.parts;
   let nextApUsed = state.raidFirstRoom ? stripRaidLinkKeys(state.apUsed) : state.apUsed;
 
   if (!nextFloor) {
@@ -648,7 +648,7 @@ export function advanceRaidStep(state: GameState): {
     nextMonsters = res.nextMonsters;
     nextFloors = res.nextFloors;
     nextPrisoners = res.nextPrisoners;
-    nextLootParts = res.nextLootParts;
+    nextParts = res.nextParts;
     nextApUsed = res.nextApUsed;
     detailLines = [
       `Floor ${nextFloor.floor} room, DC ${res.dc}, party of ${aliveBefore}: ${formatFloorRoomText(nextFloor)}`,
@@ -695,10 +695,7 @@ export function advanceRaidStep(state: GameState): {
     monsters: nextMonsters,
     floors: nextFloors,
     prisoners: nextPrisoners,
-    expedition: {
-      ...state.expedition,
-      lootParts: nextLootParts,
-    },
+    parts: nextParts,
     apUsed: isFinal ? stripRaidLinkKeys(nextApUsed) : nextApUsed,
     floorCursor,
     fear: clamp(state.fear + fearGain, 0, 100),

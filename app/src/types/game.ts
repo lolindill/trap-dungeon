@@ -578,6 +578,7 @@ export interface GameState {
   version: string;
   mode: GameMode;
   points: number;
+  parts: number; // central trap-parts pool (monster deaths, butchering; sink: Force Evolution)
   wave: number;
   day: number;
   ap: number;

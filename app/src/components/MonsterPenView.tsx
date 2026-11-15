@@ -190,6 +190,9 @@ export function MonsterPenView({
                 Breeds Left: <strong style={{ color: 'var(--m)' }}>{breedsLeft}/{MONSTER_CFG.BREED.MAX_PER_WAVE}</strong>
               </span>
               <span>
+                Trap Parts: <strong style={{ color: 'var(--c)' }}>{state.parts}</strong>
+              </span>
+              <span>
                 Upkeep ({upkeepOn ? 'ON' : 'OFF'}):{' '}
                 <strong style={{ color: upkeepOn ? 'var(--o)' : 'var(--d)' }}>
                   {upkeepPreview.total} MP
@@ -307,7 +310,15 @@ export function MonsterPenView({
             const xpPct = xpNeed ? Math.min(100, Math.round((m.xp / xpNeed) * 100)) : 100;
             const evoMinXp = xpNeed ? Math.ceil(xpNeed * MONSTER_CFG.FORCE_EVO.XP_PCT) : 999;
             const evoCost = MONSTER_CFG.FORCE_EVO.MP_PER_STAR * m.stars;
-            const canEvo = isDay && m.stars < 3 && m.xp >= evoMinXp && state.points >= evoCost;
+            const evoParts = MONSTER_CFG.FORCE_EVO.PARTS_PER_TARGET_STAR * (m.stars + 1);
+            const canEvo =
+              isDay &&
+              hasAp &&
+              m.stars < 3 &&
+              m.xp >= evoMinXp &&
+              m.fed >= MONSTER_CFG.FORCE_EVO.MIN_FED &&
+              state.points >= evoCost &&
+              state.parts >= evoParts;
             const canBreed =
               hasAp &&
               m.stars >= 2 &&
@@ -398,9 +409,9 @@ export function MonsterPenView({
                       className="dk-btn sm amber"
                       disabled={isBusy || !canEvo}
                       onClick={() => runAction((prev) => evolveMonster(prev, m.id))}
-                      title={`Force Evolve (0 AP): needs ${evoMinXp} XP (80%) & ${evoCost} MP, 15% fatal risk`}
+                      title={`Force Evolve (1 AP): needs ${evoMinXp} XP (80%), Fed ≥ ${MONSTER_CFG.FORCE_EVO.MIN_FED}, ${evoCost} MP & ${evoParts} Trap Parts, ${Math.round(MONSTER_CFG.FORCE_EVO.DIE_CHANCE * 100)}% fatal risk`}
                     >
-                      ⚡ Evolve ({evoCost} MP)
+                      ⚡ Evolve ({evoCost} MP + {evoParts}⚙)
                     </button>
                   )}
 

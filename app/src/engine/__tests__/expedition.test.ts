@@ -447,6 +447,53 @@ describe('Auto-Progress (exRecommend / exStop), Relic Shards & 8 X.AFTER Afteref
     expect(finished.officers.eleonora.aff).toBe(state.officers.eleonora.aff + 2);
   });
 
+  it('caps parts monetization at 3 x 8 MP on finalize and reroutes surplus into the central pool', () => {
+    // Bag of 5 parts: 3 sold at 8 MP each (+24 MP), 2 rerouted to state.parts
+    const rich = makeExpedState({ lootParts: 5, lootMp: 0 });
+    const finished = finalizeExpedition(rich, 'done');
+    expect(finished.points).toBe(rich.points + 24);
+    expect(finished.parts).toBe(rich.parts + 2);
+    expect(finished.expedition.lootParts).toBe(0);
+    expect(
+      (finished.expedition as RichExpeditionState).lastSummary?.lootLines.join(' | ')
+    ).toContain('2 Trap Parts → Storage');
+
+    // Bag of 2 parts: all monetized, nothing stored
+    const small = makeExpedState({ lootParts: 2, lootMp: 0 });
+    const finishedSmall = finalizeExpedition(small, 'done');
+    expect(finishedSmall.points).toBe(small.points + 16);
+    expect(finishedSmall.parts).toBe(small.parts);
+
+    // First-ever parts haul still grants the firstDcOnce estate perk
+    const perkless = makeExpedState({
+      lootParts: 1,
+      lootMp: 0,
+      afterEffects: [],
+      afFlags: {},
+    });
+    const finishedPerk = finalizeExpedition(perkless, 'done');
+    expect(finishedPerk.estate.perks.firstDcOnce).toBe(true);
+    expect(finishedPerk.parts).toBe(perkless.parts);
+  });
+
+  it('keeps the central trap-parts pool intact across expedition launch (no silent wipe)', () => {
+    const hoard = makeDayState({ parts: 12 });
+    const res = launchExpedition(hoard, [1, 2], 'short');
+    expect(res.ok).toBe(true);
+    expect(res.state.parts).toBe(12);
+    // Fresh trip starts with an empty loot bag; the pool is untouched
+    expect(res.state.expedition.lootParts).toBe(0);
+
+    // Parts looted mid-trip land in the bag, not the pool
+    const midTrip = {
+      ...res.state,
+      expedition: { ...res.state.expedition, lootParts: 3 },
+    };
+    const finished = finalizeExpedition(midTrip, 'done');
+    expect(finished.parts).toBe(12); // 3-bag fully monetized (24 MP), 0 stored
+    expect(finished.points).toBe(midTrip.points + 24);
+  });
+
   it('triggers and resolves all 8 X.AFTER aftereffects and ticks their durations', () => {
     const rich = makeExpedState({
       lengthKey: 'grand',

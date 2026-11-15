@@ -39,7 +39,9 @@ export const MONSTER_CFG = {
   FORCE_EVO: {
     XP_PCT: 0.8,
     MP_PER_STAR: 50,
-    DIE_CHANCE: 0.15,
+    PARTS_PER_TARGET_STAR: 2, // ticket 21: parts cost = 2 x target stars (sink for the parts pool)
+    MIN_FED: 2, // ticket 21: force-evo requires the feeding loop (Fed >= 2)
+    DIE_CHANCE: 0.25, // ticket 21: fatal failure raised 15% -> 25%
   },
   BREED: {
     MAX_PER_WAVE: 2,

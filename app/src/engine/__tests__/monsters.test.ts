@@ -223,28 +223,54 @@ describe('Monster Pen management actions', () => {
     expect(okAbsorb.state.monsters[0].stars).toBe(2);
   });
 
-  it('handles mevo_ Force Evolution (0 AP, >=80% XP, 50*stars MP, 15% fatal -> +1 Trap Parts)', () => {
-    const mon = makeMob('m1', 'mimic', { stars: 2, xp: 20 }); // 80% of 25
-    const state = makeDayState({ monsters: [mon], points: 200, ap: 0 });
+  it('gates mevo_ Force Evolution (1 AP, Fed≥2, ≥80% XP, 50*stars MP, 2*targetStars Parts, 25% fatal → +1 Trap Parts)', () => {
+    // ★2 mimic at exactly 80% of 25 XP; ★2→★3 costs 100 MP + 6 Parts
+    const mkState = (o: Partial<GameState> & { mob?: Partial<MonsterInstance> } = {}) => {
+      const mon = makeMob('m1', 'mimic', { stars: 2, xp: 20, fed: 2, ...o.mob });
+      return makeDayState({ monsters: [mon], points: 200, ap: 2, parts: 6, ...o });
+    };
 
-    const failLowXp = evolveMonster(
-      { ...state, monsters: [{ ...mon, xp: 19 }] },
-      'm1',
-      () => 0.5
-    );
+    // XP gate (< 80% of threshold)
+    const failLowXp = evolveMonster(mkState({ mob: { xp: 19 } }), 'm1', () => 0.5);
     expect(failLowXp.ok).toBe(false);
+    expect(failLowXp.message).toContain('XP');
 
-    // Fatal 15% roll (< 0.15)
-    const fatal = evolveMonster(state, 'm1', () => 0.05);
+    // Fed gate (council variant: force-evo must run through the feeding loop)
+    const failFed = evolveMonster(mkState({ mob: { fed: 1 } }), 'm1', () => 0.5);
+    expect(failFed.ok).toBe(false);
+    expect(failFed.message).toContain('Fed');
+
+    // AP gate (force-evo now costs 1 AP)
+    const failAp = evolveMonster(mkState({ ap: 0 }), 'm1', () => 0.5);
+    expect(failAp.ok).toBe(false);
+    expect(failAp.message).toContain('AP');
+
+    // MP gate (50 x stars kept)
+    const failMp = evolveMonster(mkState({ points: 50 }), 'm1', () => 0.5);
+    expect(failMp.ok).toBe(false);
+    expect(failMp.message).toContain('MP');
+
+    // Parts gate (2 x target stars = 6 for ★3)
+    const failParts = evolveMonster(mkState({ parts: 5 }), 'm1', () => 0.5);
+    expect(failParts.ok).toBe(false);
+    expect(failParts.message).toContain('Trap Parts');
+
+    // Fatal 25% roll (< 0.25): pays 100 MP + 6 Parts, monster dies but yields +1 Parts
+    const fatal = evolveMonster(mkState(), 'm1', () => 0.05);
     expect(fatal.ok).toBe(true);
+    expect(fatal.died).toBe(true);
     expect(fatal.state.points).toBe(100);
+    expect(fatal.state.parts).toBe(1); // 6 - 6 + 1
+    expect(fatal.state.ap).toBe(1);
     expect(fatal.state.monsters).toHaveLength(0);
-    expect(fatal.state.expedition.lootParts).toBe(1);
 
-    // Success roll (>= 0.15)
-    const success = evolveMonster(state, 'm1', () => 0.5);
+    // Success roll (>= 0.25): ★3, paid MP + Parts + AP
+    const success = evolveMonster(mkState(), 'm1', () => 0.5);
     expect(success.ok).toBe(true);
+    expect(success.evolved).toBe(true);
     expect(success.state.points).toBe(100);
+    expect(success.state.parts).toBe(0);
+    expect(success.state.ap).toBe(1);
     expect(success.state.monsters[0].stars).toBe(3);
   });
 
@@ -310,7 +336,7 @@ describe('Monster Pen management actions', () => {
     };
     const butchered = disposeMonster(buildState, 'mw', 'butcher');
     expect(butchered.ok).toBe(true);
-    expect(butchered.state.expedition.lootParts).toBe(1);
+    expect(butchered.state.parts).toBe(1);
     expect(butchered.state.town.food).toBe(estateState.town.food + 10);
   });
 });
@@ -354,7 +380,7 @@ describe('Eggs, Overcrowding, Spa healing & Upkeep cycle', () => {
     expect(state.prisoners[0].breeding).toBeNull();
     expect(state.eggs.some((e) => e.lineage === 'harpy')).toBe(true);
     expect(state.monsters.length).toBeLessThan(5);
-    expect(state.expedition.lootParts).toBeGreaterThan(0);
+    expect(state.parts).toBeGreaterThan(0);
 
     // Explicit overcrowding 80% injury check
     const crowdState = makeDayState({
@@ -555,7 +581,7 @@ describe('Floor Guards (0/2), Adjacent Links & Raid Integration', () => {
     };
     const step = advanceRaidStep(stepState);
     expect(step.state.monsters).toHaveLength(0);
-    expect(step.state.expedition.lootParts).toBe(1);
+    expect(step.state.parts).toBe(1);
     expect(step.state.prisoners).toHaveLength(0);
     expect(step.detailText).toContain('BETRAYED');
   });
