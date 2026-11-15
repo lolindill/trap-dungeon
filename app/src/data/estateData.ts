@@ -274,7 +274,7 @@ export const FACILITIES: readonly FacilityDef[] = [
     costs: [100, 220, 380],
     prereq: { key: 'trainhall', lv: 1 },
     summary: 'Interro +10%p/lv, Fear resist drop +25%/lv, Fear +2/lv',
-    artKey: 'dk_fac_trainhall',
+    artKey: 'dk_fac_torture',
   },
   {
     key: 'gibbet',
@@ -318,7 +318,7 @@ export const FACILITIES: readonly FacilityDef[] = [
     category: 'dark',
     costs: [90, 200, 360],
     summary: 'Passive captive resist -3/-5/-8 per settle',
-    artKey: 'dk_fac_annex',
+    artKey: 'dk_fac_pens',
   },
   {
     key: 'spa',
@@ -1022,7 +1022,7 @@ export const SETTLEMENT_CRISES: readonly SettlementCrisisDef[] = [
       {
         label: 'Take Bribes',
         mpCost: 0,
-        effects: { mp: 40 },
+        effects: { mp: 35, order: -10, approval: -5 },
         raidMod: { key: 'trap_off', value: 1, label: '1 Trap Room DC -2' },
       },
     ],
@@ -1096,12 +1096,12 @@ export const SETTLEMENT_CRISES: readonly SettlementCrisisDef[] = [
   {
     id: 'caravan',
     title: 'Merchant Caravan',
-    text: 'A grand trade caravan asks to winter inside your domain walls.',
+    text: 'A grand trade caravan asks to winter inside your domain walls. Their grain and coin are welcome — but the wagon crowds will cloak infiltrators scouting your first room.',
     weight: 1,
     artKey: 'dk_sev_caravan',
     choices: [
       {
-        label: 'Welcome Caravan',
+        label: 'Welcome Caravan (+30 MP, +15 Food, raid risk)',
         mpCost: 0,
         effects: { food: 15, mp: 30 },
         raidMod: { key: 'first_dc', value: -2, label: 'First Room DC -2' },
@@ -1193,7 +1193,7 @@ export const SETTLEMENT_CRISES: readonly SettlementCrisisDef[] = [
       {
         label: 'Export Surplus',
         mpCost: 0,
-        effects: { mp: 40, renown: 2 },
+        effects: { mp: 30, renown: -2, food: -25 },
       },
     ],
   },

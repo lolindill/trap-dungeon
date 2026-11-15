@@ -1762,6 +1762,22 @@ export function resolveSettlementCrisis(
     }
   }
 
+  // Ticket 17: render every promised effect (cost or gain) with its magnitude
+  // so the net of a crisis choice reads as a real tradeoff in the flash.
+  const fmtDelta = (v: number): string => (v > 0 ? `+${v}` : `${v}`);
+  const deltaBits: string[] = [];
+  if (fx.mp) deltaBits.push(`${fmtDelta(fx.mp)} MP`);
+  if (fx.food) deltaBits.push(`${fmtDelta(fx.food)} Food`);
+  if (fx.approval) deltaBits.push(`${fmtDelta(fx.approval)} Approval`);
+  if (fx.order) deltaBits.push(`${fmtDelta(fx.order)} Order`);
+  if (fx.renown) deltaBits.push(`${fmtDelta(fx.renown)} Renown`);
+  if (fx.housing) deltaBits.push(`${fmtDelta(fx.housing)} Housing`);
+  if (fx.fear) deltaBits.push(`${fmtDelta(fx.fear)} Fear`);
+  if (fx.lust) deltaBits.push(`${fmtDelta(fx.lust)} Lust`);
+  if (fx.guard) deltaBits.push(`${fmtDelta(fx.guard)} Guard`);
+  if (fx.popPct) deltaBits.push(`${fmtDelta(Math.round(fx.popPct * 100))}% Pop`);
+  const deltaText = deltaBits.length > 0 ? ` (${deltaBits.join(', ')})` : '';
+
   const next: GameState = {
     ...state,
     points: Math.max(0, state.points - choice.mpCost + (fx.mp ?? 0)),
@@ -1785,13 +1801,13 @@ export function resolveSettlementCrisis(
       ...state.crises,
       activeRaidMods: nextRaidMods,
     },
-    flash: `Crisis Resolved — ${def.title}: ${choice.label}${modText}`,
+    flash: `Crisis Resolved — ${def.title}: ${choice.label}${deltaText}${modText}`,
   };
 
   return {
     ok: true,
     state: next,
-    message: `${def.title}: ${choice.label}${modText}`,
+    message: `${def.title}: ${choice.label}${deltaText}${modText}`,
     artUrl: resolveSceneAsset(def.artKey),
   };
 }

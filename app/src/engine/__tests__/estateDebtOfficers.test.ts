@@ -4,11 +4,12 @@ import {
   EXPLORE_EVENTS,
   EXPLORE_LOCATIONS,
   FACILITIES,
+  FACILITY_MAP,
   OFFICER_INTERACTIONS,
   SETTLEMENT_CRISES,
 } from '../../data/estateData';
 import type { ExploreEffectSpec } from '../../data/estateData';
-import type { Prisoner, RelicKey } from '../../types/game';
+import type { GameState, Prisoner, RelicKey } from '../../types/game';
 import { calcRestMp, finishManagementSettle, startNewDay } from '../dayLoop';
 import {
   convertRelicShards,
@@ -55,6 +56,7 @@ import {
   talkToOfficer,
 } from '../officers';
 import { createInitialGameState } from '../saveLoad';
+import { resolveRaidModifiers } from '../raidMods';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -799,5 +801,175 @@ describe('Ticket 25: Income-Scaled Min Due, Softened Late Strike, Handover Affin
     const lines =
       (finished.expedition as RichExpeditionState).lastSummary?.lootLines ?? [];
     expect(lines.join(' | ')).toContain('smelted from surplus Shards');
+  });
+});
+
+// Ticket 17: crisis repricing (the raidMod IS the price of the MP) + estateData art key fixes
+describe('Ticket 17: Crisis Repricing (honest MP prices) & Art Key Fixes', () => {
+  const crisisById = (id: string) => {
+    const def = SETTLEMENT_CRISES.find((c) => c.id === id);
+    expect(def, `crisis ${id} must exist`).toBeDefined();
+    return def!;
+  };
+
+  /** Copy of raidMods.test.ts's floor installer (kept local to this suite). */
+  function installTrapAt(state: GameState, floorIdx: number, grade: 'D' | 'C'): GameState {
+    const floors = [...state.floors];
+    floors[floorIdx] = {
+      ...floors[floorIdx],
+      slots: [
+        {
+          id: `t${floorIdx}`,
+          text: 'Test Trap',
+          grade,
+          types: ['phys'],
+          mpInvested: 10,
+        },
+      ],
+    };
+    return { ...state, floors };
+  }
+
+  it('reprices Take Bribes to +35 MP with -10 Order / -5 Approval and keeps the real trap_off raidMod', () => {
+    const bribes = crisisById('smuggler').choices[1];
+    expect(bribes.label).toBe('Take Bribes');
+    expect(bribes.mpCost).toBe(0);
+    expect(bribes.effects.mp).toBe(35);
+    expect(bribes.effects.order).toBe(-10);
+    expect(bribes.effects.approval).toBe(-5);
+    expect(bribes.raidMod?.key).toBe('trap_off');
+    expect(bribes.raidMod?.value).toBe(1);
+  });
+
+  it('keeps Welcome Caravan at +30 MP / +15 Food with its real first_dc -2 and states the tradeoff in the choice text', () => {
+    const caravanDef = crisisById('caravan');
+    const welcome = caravanDef.choices[0];
+    expect(welcome.effects.mp).toBe(30);
+    expect(welcome.effects.food).toBe(15);
+    expect(welcome.raidMod).toEqual({
+      key: 'first_dc',
+      value: -2,
+      label: 'First Room DC -2',
+    });
+    // The net must read as a tradeoff: label + crisis text state the raid penalty.
+    expect(welcome.label).toContain('raid');
+    expect(caravanDef.text).toContain('infiltrators');
+    // Turn Away remains the safe-but-sour alternative.
+    expect(caravanDef.choices[1].effects.renown).toBe(-2);
+  });
+
+  it('reprices Export Surplus to +30 MP with -2 Renown / -25 Food', () => {
+    const exportChoice = crisisById('bumper').choices[1];
+    expect(exportChoice.label).toBe('Export Surplus');
+    expect(exportChoice.effects.mp).toBe(30);
+    expect(exportChoice.effects.renown).toBe(-2);
+    expect(exportChoice.effects.food).toBe(-25);
+  });
+
+  it('sweep invariant: every +MP crisis choice shows a visible cost line (stat cost or raidMod)', () => {
+    for (const def of SETTLEMENT_CRISES) {
+      for (const choice of def.choices) {
+        const mp = choice.effects.mp ?? 0;
+        if (mp <= 0) continue;
+        const hasStatCost = Object.entries(choice.effects).some(
+          ([key, value]) => key !== 'mp' && typeof value === 'number' && value < 0
+        );
+        expect(hasStatCost || choice.raidMod !== undefined).toBe(true);
+      }
+    }
+    // The free-MP choices are exactly the repriced trio (no new hidden faucets).
+    const mpChoices = SETTLEMENT_CRISES.flatMap((d) => d.choices).filter(
+      (c) => (c.effects.mp ?? 0) > 0
+    );
+    expect(mpChoices).toHaveLength(3);
+  });
+
+  it('fixes copy-paste art keys: torture -> dk_fac_torture, reform -> dk_fac_pens (spa intentionally keeps dk_fac_bath)', () => {
+    expect(FACILITY_MAP.torture.artKey).toBe('dk_fac_torture'); // canonical alias (Lua canon), resolves via dk_fac_annex
+    expect(FACILITY_MAP.reform.artKey).toBe('dk_fac_pens'); // pens art = captives in collars, visually-intended
+    expect(FACILITY_MAP.spa.artKey).toBe('dk_fac_bath'); // no dedicated spa asset exists; bathhouse art IS spa imagery
+    // No facility duplicates its prerequisite/sibling's key anymore.
+    expect(FACILITY_MAP.torture.artKey).not.toBe(FACILITY_MAP.trainhall.artKey);
+    expect(FACILITY_MAP.reform.artKey).not.toBe(FACILITY_MAP.annex.artKey);
+    for (const fac of FACILITIES) {
+      expect(
+        resolveSceneAsset(fac.artKey),
+        `Facility ${fac.key} art ${fac.artKey} unresolvable`
+      ).toBeDefined();
+    }
+  });
+
+  it('applies Take Bribes end-to-end: stat deltas land, trap_off enters activeRaidMods, and the next raid loses -2 DC on the weakest trap room', () => {
+    let state = makeDayState({ mode: 'msettle', points: 50 });
+    state = installTrapAt(state, 0, 'D'); // 1F: trap power 7 (weakest)
+    state = installTrapAt(state, 2, 'C'); // 3F: trap power 8
+
+    const rolled = rollSettlementCrisis(state, { forceCrisisId: 'smuggler' });
+    expect(rolled.crisis?.id).toBe('smuggler');
+    const ptsBefore = rolled.state.points;
+    const orderBefore = rolled.state.town.order;
+    const approvalBefore = rolled.state.town.approval;
+
+    const bribed = resolveSettlementCrisis(rolled.state, 1);
+    expect(bribed.ok).toBe(true);
+    expect(bribed.state.points).toBe(ptsBefore + 35);
+    expect(bribed.state.town.order).toBe(orderBefore - 10);
+    expect(bribed.state.town.approval).toBe(approvalBefore - 5);
+    expect(bribed.state.crises.activeRaidMods).toContainEqual({
+      key: 'trap_off',
+      value: 1,
+    });
+    // The flash renders every promised magnitude with its raid penalty.
+    expect(bribed.message).toContain('+35 MP');
+    expect(bribed.message).toContain('-10 Order');
+    expect(bribed.message).toContain('-5 Approval');
+    expect(bribed.message).toContain('Next Raid: 1 Trap Room DC -2');
+
+    // The promised penalty bites the NEXT raid's weakest trap room.
+    const weakRoom = resolveRaidModifiers(bribed.state, {
+      floorNum: 1,
+      isFirstRoom: false,
+      hasMonsterOnFloor: false,
+    });
+    expect(weakRoom.floorDcDelta).toBe(-2);
+    expect(weakRoom.totalDcDelta).toBe(-2);
+    expect(weakRoom.notes).toContain('activeRaidMods:trap_off -2 (1F)');
+
+    // The stronger trap room is untouched by trap_off.
+    const strongRoom = resolveRaidModifiers(bribed.state, {
+      floorNum: 3,
+      isFirstRoom: false,
+      hasMonsterOnFloor: false,
+    });
+    expect(strongRoom.floorDcDelta).toBe(0);
+    expect(strongRoom.totalDcDelta).toBe(0);
+  });
+
+  it('applies Welcome Caravan end-to-end: first_dc -2 enters activeRaidMods and hits the next raid first room', () => {
+    const state = makeDayState({ mode: 'msettle', points: 50 });
+    const rolled = rollSettlementCrisis(state, { forceCrisisId: 'caravan' });
+    expect(rolled.crisis?.id).toBe('caravan');
+    const ptsBefore = rolled.state.points;
+    const foodBefore = rolled.state.town.food;
+
+    const welcomed = resolveSettlementCrisis(rolled.state, 0);
+    expect(welcomed.ok).toBe(true);
+    expect(welcomed.state.points).toBe(ptsBefore + 30);
+    expect(welcomed.state.town.food).toBe(foodBefore + 15);
+    expect(welcomed.state.crises.activeRaidMods).toContainEqual({
+      key: 'first_dc',
+      value: -2,
+    });
+    expect(welcomed.message).toContain('+30 MP');
+    expect(welcomed.message).toContain('+15 Food');
+    expect(welcomed.message).toContain('Next Raid: First Room DC -2');
+
+    const firstRoom = resolveRaidModifiers(welcomed.state, {
+      floorNum: 1,
+      isFirstRoom: true,
+      hasMonsterOnFloor: false,
+    });
+    expect(firstRoom.firstRoomDcDelta).toBe(-2);
+    expect(firstRoom.totalDcDelta).toBe(-2);
   });
 });
