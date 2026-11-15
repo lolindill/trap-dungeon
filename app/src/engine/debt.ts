@@ -63,7 +63,9 @@ export interface DebtVisitResolution {
 export function calcPrisonerRansom(
   state: GameState,
   prisoner: Prisoner,
-  forSale = true
+  forSale = true,
+  /** Estate raid-mod seam (ticket 15): pass getEstateRaidModifiers(state).ransomBonusMult. */
+  ransomBonusMult?: number
 ): number {
   const base = CFG.RANSOM[prisoner.grade] ?? CFG.RANSOM.C;
   let mult = 1;
@@ -89,8 +91,10 @@ export function calcPrisonerRansom(
   if (prisoner.virgin && !prisoner.traits.includes('pure')) {
     mult *= 1.1;
   }
-  if (state.town.renown >= 80) mult *= 1.15;
-  else if (state.town.renown >= 60) mult *= 1.1;
+  // Renown ransom premium — wired to the estate raid-mod seam via the optional
+  // `ransomBonusMult` param (defaults to the renown-derived value when omitted).
+  const renownMult = state.town.renown >= 80 ? 1.15 : state.town.renown >= 60 ? 1.1 : 1.0;
+  mult *= ransomBonusMult ?? renownMult;
   const marketLv = state.estate.facilities.market ?? 0;
   if (marketLv > 0) mult *= 1 + 0.05 * marketLv;
 

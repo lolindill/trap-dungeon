@@ -834,9 +834,11 @@ function applyExploreEffectSpec(
 
   if (eff.sellBestMult && next.prisoners.length > 0) {
     let bestIdx = 0;
-    let bestVal = calcPrisonerRansom(next, next.prisoners[0], true);
+    // Ticket 15 raid-mods seam: feed the estate ransom premium explicitly.
+    const ransomBonusMult = getEstateRaidModifiers(next).ransomBonusMult;
+    let bestVal = calcPrisonerRansom(next, next.prisoners[0], true, ransomBonusMult);
     for (let i = 1; i < next.prisoners.length; i++) {
-      const val = calcPrisonerRansom(next, next.prisoners[i], true);
+      const val = calcPrisonerRansom(next, next.prisoners[i], true, ransomBonusMult);
       if (val > bestVal) {
         bestIdx = i;
         bestVal = val;

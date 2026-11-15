@@ -280,6 +280,24 @@ export function generateParty(
     });
   }
 
+  // Crisis raid mods: party-gen adjustments (hero_up / hero_down).
+  // Consumed HERE, not via the raidMods seam; purge/decrement is handled at
+  // wave settlement (ticket 16). Never promotes to EPIC — caps at SSS.
+  const activeRaidMods = state.crises.activeRaidMods ?? [];
+  const heroUp = activeRaidMods.reduce((s, m) => (m.key === 'hero_up' ? s + m.value : s), 0);
+  const heroDown = activeRaidMods.reduce((s, m) => (m.key === 'hero_down' ? s + m.value : s), 0);
+  const heroInjured = activeRaidMods.some((m) => m.key === 'hero_injured');
+  if (heroUp - heroDown !== 0) {
+    let topIdx = 0;
+    for (let i = 1; i < grades.length; i++) {
+      if (heroGradeIndex(grades[i]) > heroGradeIndex(grades[topIdx])) topIdx = i;
+    }
+    const idx = heroGradeIndex(grades[topIdx]);
+    if (idx > 0) {
+      grades[topIdx] = CFG.HERO_GRADES[clamp(idx + (heroUp - heroDown), 0, CFG.HERO_GRADES.length - 1)];
+    }
+  }
+
   let party: Hero[] = ([1, 2, 3] as const).map((slot, idx) => {
     const grade = grades[idx];
     const gender = pickGender(state.settings.genderPref);
@@ -392,6 +410,15 @@ export function generateParty(
   }
 
   party = assignPartyBondsAndStories(party, wave, rng);
+
+  // Crisis raid mod: `hero_injured` — the top-grade hero starts the raid injured.
+  if (heroInjured && party.length > 0) {
+    let topIdx = 0;
+    for (let i = 1; i < party.length; i++) {
+      if (heroGradeIndex(party[i].grade) > heroGradeIndex(party[topIdx].grade)) topIdx = i;
+    }
+    party[topIdx] = { ...party[topIdx], cond: 'injured' };
+  }
 
   while (nextSignatures.length > 9) nextSignatures.shift();
 

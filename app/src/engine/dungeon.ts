@@ -27,6 +27,7 @@ import type {
 } from '../types/game';
 import { heroGradeIndex } from './heroes';
 import { isMonsterDeployed, isMonsterHurt } from './monsters';
+import { resolveRaidModifiers } from './raidMods';
 import { clamp, uid } from './rng';
 
 const TRAP_ORDER: Record<TrapGrade, number> = {
@@ -272,7 +273,14 @@ export function getFloorDC(floor: FloorState, state?: GameState): number {
   const baseDc = CFG.DC_BASE + Math.floor((floor.floor - 1) / 3) + clamp(trapSum + synBonus, 0, CFG.FLOOR_CAP);
   if (!state || floor.slots.length === 0) return baseDc;
   const shieldBonus = floor.floor === 1 && state.relics?.owned.includes('shield') ? 1 : 0;
-  return baseDc + getFloorCombatBonus(state, floor).bonus + shieldBonus;
+  // Ticket 15 raid-mods seam: external DC modifiers (estate / crises / Lilim perks)
+  // enter through resolveRaidModifiers — council caps are enforced inside the resolver.
+  const raidMods = resolveRaidModifiers(state, {
+    floorNum: floor.floor,
+    isFirstRoom: state.mode === 'raid' && state.raidFirstRoom === true,
+    hasMonsterOnFloor: getFloorCombatSlots(floor).some((cs) => cs.kind === 'monster'),
+  });
+  return baseDc + getFloorCombatBonus(state, floor).bonus + shieldBonus + raidMods.totalDcDelta;
 }
 
 export function getTotalTrapCount(floors: FloorState[]): number {
