@@ -151,7 +151,7 @@ export function DebtPanel({
           </b>
         </div>
         <div className="dk-ledger-row">
-          <span>Installment Min Due (Base {summary.baseMin}{summary.extCarry > 0 ? ` + Carry ${summary.extCarry}` : ''})</span>
+          <span>Installment Min Due (Base {summary.baseMin}{summary.incomeMin > 0 ? ` · Income floor ${summary.incomeMin}` : ''}{summary.extCarry > 0 ? ` + Carry ${summary.extCarry}` : ''})</span>
           <b style={{ color: 'var(--y)' }}>
             {summary.minDue} MP
             {summary.minCutPct > 0 ? ` (-${summary.minCutPct}%)` : ''}

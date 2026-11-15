@@ -8,8 +8,14 @@ import {
   SETTLEMENT_CRISES,
 } from '../../data/estateData';
 import type { ExploreEffectSpec } from '../../data/estateData';
-import type { Prisoner } from '../../types/game';
+import type { Prisoner, RelicKey } from '../../types/game';
 import { calcRestMp, finishManagementSettle, startNewDay } from '../dayLoop';
+import {
+  convertRelicShards,
+  finalizeExpedition,
+  launchExpedition,
+  type RichExpeditionState,
+} from '../expedition';
 import {
   applyDebtSeizure,
   entertainEleonora,
@@ -656,5 +662,142 @@ describe('Officers: Stage 1-5, Affinity, Interactions & Active Perk Hooks', () =
 
     const toDebt = finishManagementSettle(state);
     expect(toDebt.mode).toBe('debt');
+  });
+});
+
+// Ticket 25: shard sink + debt formula rescale
+describe('Ticket 25: Income-Scaled Min Due, Softened Late Strike, Handover Affinity & Shard Sink', () => {
+  const ALL_RELICS: RelicKey[] = ['shield', 'chalice', 'crown', 'lens'];
+
+  it('scales the installment floor to 0.15 x avg net MP of the last 3 settles (schedule stays the floor)', () => {
+    // trailingIncome [400, 500, 600] -> avg 500 -> income floor ceil(75) = 75,
+    // which binds above the step-0 schedule floor of 30.
+    const richState = makeDayState({
+      mode: 'estate',
+      points: 3500,
+      estate: {
+        ...createInitialGameState().estate,
+        trailingIncome: [400, 500, 600],
+      },
+    });
+    const rich = getDebtSummary(richState);
+    expect(rich.incomeMin).toBe(75);
+    expect(rich.baseMin).toBe(75);
+    expect(rich.minDue).toBe(75);
+
+    // Empty history (legacy save / fresh save) -> neutral schedule floor.
+    const floorState = {
+      ...richState,
+      estate: { ...richState.estate, trailingIncome: [] as number[] },
+    };
+    const floor = getDebtSummary(floorState);
+    expect(floor.incomeMin).toBe(0);
+    expect(floor.baseMin).toBe(30);
+    expect(floor.minDue).toBe(30);
+
+    // Entertainment -25% still cuts the income-scaled floor (75 - 18 = 57).
+    const ent = entertainEleonora({ ...richState, mode: 'debt' }, true);
+    expect(ent.ok).toBe(true);
+    expect(getDebtSummary(ent.state).minDue).toBe(57);
+  });
+
+  it('applies the softened late strike (x1.05 + flat 60) while keeping extCarry wipe, seizure and 3-late bankruptcy', () => {
+    const lateState = makeDayState({
+      mode: 'debt',
+      wave: 3,
+      points: 0,
+      prisoners: [],
+      debt: {
+        ...createInitialGameState().debt,
+        amount: 1000,
+        extCarry: 50,
+        dueWave: 3,
+      },
+    });
+    const visit = resolveDebtVisit(lateState);
+    expect(visit.verdict).toBe('late');
+    // Treasury empty, no captives -> nothing to seize, no credit.
+    expect(visit.seizedPrisoner).toBeNull();
+    expect(visit.seizedCredit).toBe(0);
+    // x1.1 would be 1100; softened = floor(1000 x 1.05) + 60 = 1110.
+    expect(visit.state.debt.amount).toBe(1110);
+    expect(visit.state.debt.extCarry).toBe(0);
+    expect(visit.state.debt.lates).toBe(1);
+    expect(visit.state.debt.patience).toBe(30); // 60 - 30, unchanged delta
+
+    // Bankruptcy stays reachable at 3 lates with the softened formula.
+    const strike3 = {
+      ...visit.state,
+      mode: 'debt' as const,
+      debt: { ...visit.state.debt, lates: 2, paidThisVisit: 0 },
+    };
+    const bankrupt = resolveDebtVisit(strike3);
+    expect(bankrupt.ending).toBe('bankrupt');
+    expect(bankrupt.state.debt.lates).toBe(3);
+    expect(bankrupt.state.mode).toBe('over');
+    expect(bankrupt.state.endings.gameOver).toBe('bankrupt');
+  });
+
+  it('grants +3 Eleonora affinity on prisoner handover', () => {
+    const state = makeDayState({
+      mode: 'debt',
+      wave: 3,
+      points: 100,
+      prisoners: [makePrisoner(21, { grade: 'A' })],
+      debt: { ...createInitialGameState().debt, dueWave: 3 },
+    });
+    const affBefore = state.officers.eleonora.aff;
+    const hand = handoverPrisonerForDebt(state, 21);
+    expect(hand.ok).toBe(true);
+    expect(hand.state.prisoners).toHaveLength(0);
+    expect(hand.state.debt.paidThisVisit).toBeGreaterThan(0);
+    expect(hand.state.officers.eleonora.aff).toBe(affBefore + 3);
+    expect(hand.message).toContain('+3 Eleonora Aff');
+  });
+
+  it('smelts surplus Relic Shards into durable Trap Parts once all 4 relics are owned (sink, not MP faucet)', () => {
+    // Pure conversion: 7 surplus shards -> 2 parts, 1 shard left over.
+    const conv = convertRelicShards({ owned: [...ALL_RELICS], shards: 7 });
+    expect(conv.unlocked).toHaveLength(0);
+    expect(conv.relics.owned).toHaveLength(4);
+    expect(conv.overflowParts).toBe(2);
+    expect(conv.relics.shards).toBe(1);
+
+    // Below the 3-shard threshold nothing is forced.
+    const partial = convertRelicShards({ owned: [...ALL_RELICS], shards: 2 });
+    expect(partial.overflowParts).toBe(0);
+    expect(partial.relics.shards).toBe(2);
+
+    // Mixed: unlocking the last relic takes priority, then surplus smelts.
+    const mixed = convertRelicShards({
+      owned: ['shield', 'chalice', 'crown'],
+      shards: 6,
+    });
+    expect(mixed.unlocked).toEqual(['lens']);
+    expect(mixed.relics.owned).toHaveLength(4);
+    expect(mixed.overflowParts).toBe(1);
+    expect(mixed.relics.shards).toBe(0);
+
+    // Finalize wiring: 3 shards on a full relic set -> +1 state.parts.
+    const day = makeDayState({ points: 2000, prisoners: [makePrisoner(31)] });
+    const launched = launchExpedition(day, [31], 'short');
+    expect(launched.ok).toBe(true);
+    const withShards = {
+      ...launched.state,
+      relics: { owned: [...ALL_RELICS], shards: 0 },
+      expedition: {
+        ...(launched.state.expedition as RichExpeditionState),
+        lootMp: 0,
+        lootShards: 3,
+      },
+    };
+    const partsBefore = withShards.parts;
+    const finished = finalizeExpedition(withShards, 'done');
+    expect(finished.relics.owned).toHaveLength(4);
+    expect(finished.relics.shards).toBe(0);
+    expect(finished.parts).toBe(partsBefore + 1);
+    const lines =
+      (finished.expedition as RichExpeditionState).lastSummary?.lootLines ?? [];
+    expect(lines.join(' | ')).toContain('smelted from surplus Shards');
   });
 });

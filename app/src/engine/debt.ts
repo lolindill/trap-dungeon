@@ -14,6 +14,14 @@ import { grantOfficerAffinity } from './officers';
 import { clamp, pickOne } from './rng';
 
 const DEBT_MIN_SCHEDULE = [30, 60, 120, 180, 240, 300, 360] as const;
+// Ticket 25: the installment floor also tracks recent estate income so
+// late-game installments stay meaningful: minDue floor = max(schedule step,
+// ceil(0.15 x avg net MP of the last 3 settles) from estate.trailingIncome.
+const DEBT_INCOME_MIN_PCT = 0.15;
+// Ticket 25: late strike softened from principal x1.1 to principal x1.05
+// plus this flat surcharge. extCarry wipe, seizure and 3-strike bankruptcy
+// are unchanged.
+const DEBT_LATE_FLAT_MP = 60;
 
 export type DebtVerdict = 'ontime' | 'ext' | 'forgive' | 'late';
 
@@ -24,6 +32,7 @@ export interface DebtSummary {
   dueWave: number;
   dueInWaves: number;
   baseMin: number;
+  incomeMin: number;
   extCarry: number;
   minCutPct: number;
   entCutMp: number;
@@ -164,8 +173,19 @@ export function getDebtSummary(state: GameState): DebtSummary {
   const principal = Math.max(0, d.amount);
   const extraLoan = Math.max(0, d.extraLoan);
   const totalDebt = principal + extraLoan;
-  const baseMin =
-    DEBT_MIN_SCHEDULE[Math.min(d.step, DEBT_MIN_SCHEDULE.length - 1)] ?? 360;
+  // Ticket 25: income-scaled floor. estate.trailingIncome records the net MP
+  // (tax + base) of the last 3 settles; legacy/empty history falls back to the
+  // schedule step (neutral default), so minDue never starts below the schedule.
+  const trailing = state.estate.trailingIncome ?? [];
+  const avgNetMp =
+    trailing.length > 0
+      ? trailing.reduce((sum, n) => sum + Math.max(0, n), 0) / trailing.length
+      : 0;
+  const incomeMin = Math.ceil(avgNetMp * DEBT_INCOME_MIN_PCT);
+  const baseMin = Math.max(
+    DEBT_MIN_SCHEDULE[Math.min(d.step, DEBT_MIN_SCHEDULE.length - 1)] ?? 360,
+    incomeMin
+  );
   const extCarry = d.extCarry ?? 0;
   const rawNeed = baseMin + extCarry;
   const minCutFrac = Math.min(d.minCut ?? 0, 0.25);
@@ -202,6 +222,7 @@ export function getDebtSummary(state: GameState): DebtSummary {
     dueWave: d.dueWave,
     dueInWaves: Math.max(0, d.dueWave - state.wave),
     baseMin,
+    incomeMin,
     extCarry,
     minCutPct: Math.round(minCutFrac * 100),
     entCutMp,
@@ -418,9 +439,12 @@ export function handoverPrisonerForDebt(
       paidThisVisit: applied.state.debt.paidThisVisit + credit,
     },
   };
+  // Ticket 25: handing over a captive pleases Eleonora — +3 Affinity
+  // (previously granted none).
+  next = grantOfficerAffinity(next, 'eleonora', 3).state;
   next = checkPayoffEnding(next);
   const artKey = prisoner.gender === 'male' ? 'dk_debt_hand_m' : 'dk_debt_hand';
-  const msg = `Handed over ${prisoner.name} to Goldreich (-${credit} MP debt).`;
+  const msg = `Handed over ${prisoner.name} to Goldreich (-${credit} MP debt, +3 Eleonora Aff).`;
 
   return {
     ok: true,
@@ -815,14 +839,16 @@ export function resolveDebtVisit(state: GameState): DebtVisitResolution {
     };
     artKey = 'dk_debt_forgive';
   } else {
-    // Late strike + 10% principal penalty + seizure
+    // Ticket 25: late strike softened — principal x1.05 + flat 60 MP (was
+    // x1.1). extCarry wipe, Patience -30, seizure and 3-strike bankruptcy
+    // are unchanged.
     const nextLates = working.debt.lates + 1;
     working = {
       ...working,
       debt: {
         ...working.debt,
         lates: nextLates,
-        amount: Math.floor(working.debt.amount * 1.1),
+        amount: Math.floor(working.debt.amount * 1.05) + DEBT_LATE_FLAT_MP,
         patience: clamp(working.debt.patience - 30, 0, 100),
         extCarry: 0,
       },

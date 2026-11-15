@@ -606,15 +606,26 @@ function pushStep(
 export function convertRelicShards(relics: RelicsState): {
   relics: RelicsState;
   unlocked: RelicKey[];
+  overflowParts: number;
 } {
   let shards = relics.shards;
   const owned = [...relics.owned];
   const unlocked: RelicKey[] = [];
+  let overflowParts = 0;
   const allRelics: RelicKey[] = ['shield', 'chalice', 'crown', 'lens'];
 
   while (shards >= EXPED_CFG.SHARDS_PER_RELIC) {
     const pool = allRelics.filter((r) => !owned.includes(r));
-    if (pool.length === 0) break;
+    if (pool.length === 0) {
+      // Ticket 25: once all 4 relics are owned, surplus shards no longer
+      // silently vanish. Every SHARDS_PER_RELIC shards smelt down into 1
+      // durable Trap Part for the central `parts` pool (Force Evolution
+      // feed). This is a SINK, not an MP faucet: central-pool parts are
+      // spent by Force Evolution and are never auto-monetized.
+      shards -= EXPED_CFG.SHARDS_PER_RELIC;
+      overflowParts += 1;
+      continue;
+    }
     const chosen = pickOne(pool);
     shards -= EXPED_CFG.SHARDS_PER_RELIC;
     owned.push(chosen);
@@ -624,6 +635,7 @@ export function convertRelicShards(relics: RelicsState): {
   return {
     relics: { owned, shards },
     unlocked,
+    overflowParts,
   };
 }
 
@@ -856,7 +868,9 @@ export function finalizeExpedition(
   const partsBag = exp.lootParts;
   const partsSold = Math.min(EXPED_CFG.PARTS_MONETIZE_CAP, partsBag);
   const partsStored = partsBag - partsSold;
-  const nextParts = state.parts + partsStored;
+  // Ticket 25: surplus Relic Shards (all 4 relics owned) smelt into durable
+  // Trap Parts for the central pool — a sink, never an MP faucet.
+  const nextParts = state.parts + partsStored + shardRes.overflowParts;
   nextPoints += partsSold * EXPED_CFG.PARTS_MP_EACH;
   if (partsBag > 0 && !nextPerks.firstDcOnce) {
     nextPerks.firstDcOnce = true;
@@ -879,6 +893,11 @@ export function finalizeExpedition(
   if (exp.lootEggs > 0) lootLines.push(`+${exp.lootEggs} Monster Egg(s)`);
   if (exp.lootIntel > 0) lootLines.push(`+${exp.lootIntel} Intel`);
   if (exp.lootShards > 0) lootLines.push(`+${exp.lootShards} Relic Shard(s)`);
+  if (shardRes.overflowParts > 0) {
+    lootLines.push(
+      `+${shardRes.overflowParts} Trap Part(s) smelted from surplus Shards → Storage`
+    );
+  }
   if ((exp.lootRenown ?? 0) > 0) lootLines.push(`+${exp.lootRenown} Renown`);
   if ((exp.lootApproval ?? 0) > 0) lootLines.push(`+${exp.lootApproval} Approval`);
   if ((exp.lootFear ?? 0) > 0) lootLines.push(`+${exp.lootFear} Fear`);
