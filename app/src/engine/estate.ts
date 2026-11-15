@@ -1196,6 +1196,12 @@ export function computeManagementSettle(
   ).length;
   const annexIncome = annexedCount * (30 + 10 * t.lv - 10);
 
+  // Ticket 24 (Economist): siphon KEPT at 25% of (tax + baseIncome).
+  // The new Vault Draft sink (debt.ts — up to 50% of min-due per visit at a
+  // 20% premium) gives stored MP a real per-visit outlet (~72-216 vault MP
+  // depending on schedule step), so trimming to 20% is not needed yet; a trim
+  // would also raise net cash income (an economy loosening). Revisit only if
+  // the wave-2 sellsword sink lands and the vault still strands at cap.
   const vaultCap = 150 * t.lv;
   const vaultDeposit = Math.min(
     Math.max(0, vaultCap - state.estate.vaultMp),

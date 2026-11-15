@@ -1011,3 +1011,128 @@ export function getEleonoraVisitSceneContext(state: GameState): {
       resolveNpcImage('eleonora', summary.lates > 0 ? 'angry' : 'proud'),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Ticket 24: Vault Draft against Min-Due (vault-only MP sink)
+// ---------------------------------------------------------------------------
+// The Estate Vault (fed by the 25% settle siphon) can be drafted against the
+// CURRENT visit's minimum due at a 20% premium (Economist table), capped at
+// 50% of min-due per visit. The draft must be the FIRST payment of the visit
+// (same gate pattern as `canEntertain`) so the per-visit cap cannot be stacked
+// or repeated without any extra persistent per-visit state. Vault-only: no
+// cash MP ever leaves `points` through this action — that is the sink.
+
+export const VAULT_DRAFT_PREMIUM_PCT = 20;
+export const VAULT_DRAFT_MAX_MIN_DUE_PCT = 50;
+
+export interface VaultDraftInfo {
+  vaultMp: number;
+  canDraft: boolean;
+  reason: string;
+  capRelief: number;
+  maxRelief: number;
+  maxCost: number;
+}
+
+export function getVaultDraftCost(relief: number): number {
+  return Math.ceil(relief * (1 + VAULT_DRAFT_PREMIUM_PCT / 100));
+}
+
+export function getVaultDraftInfo(state: GameState): VaultDraftInfo {
+  const vaultMp = Math.max(0, Math.floor(state.estate.vaultMp));
+  const summary = getDebtSummary(state);
+  const capRelief = Math.floor(
+    summary.minDue * (VAULT_DRAFT_MAX_MIN_DUE_PCT / 100)
+  );
+  const affordableRelief = Math.floor(vaultMp / (1 + VAULT_DRAFT_PREMIUM_PCT / 100));
+  const maxRelief = Math.max(
+    0,
+    Math.min(capRelief, summary.remainingDue, affordableRelief)
+  );
+
+  let reason = '';
+  if (state.debt.ended) {
+    reason = 'Debt contract already concluded.';
+  } else if (state.mode !== 'debt') {
+    reason = 'Vault draft is only available during Debt Collection visits.';
+  } else if (summary.totalDebt <= 0) {
+    reason = 'No remaining debt to draft against.';
+  } else if (summary.paidThisVisit > 0) {
+    reason = 'Draft must be the first payment of this visit.';
+  } else if (summary.minDue <= 0 || summary.remainingDue <= 0) {
+    reason = 'Minimum due already covered — no draft needed.';
+  } else if (vaultMp < 2) {
+    reason = 'Vault lacks MP to cover the 20% premium.';
+  }
+
+  return {
+    vaultMp,
+    canDraft: !reason && maxRelief > 0,
+    reason,
+    capRelief,
+    maxRelief,
+    maxCost: getVaultDraftCost(maxRelief),
+  };
+}
+
+export function draftDebtFromVault(
+  state: GameState,
+  requestedRelief?: number
+): DebtActionResult {
+  const info = getVaultDraftInfo(state);
+  if (info.reason) {
+    return {
+      ok: false,
+      state: { ...state, flash: info.reason },
+      message: info.reason,
+    };
+  }
+  if (info.maxRelief <= 0) {
+    const msg = 'Vault MP cannot cover the 20% premium for any relief.';
+    return {
+      ok: false,
+      state: { ...state, flash: msg },
+      message: msg,
+    };
+  }
+
+  const relief =
+    requestedRelief === undefined || !Number.isFinite(requestedRelief)
+      ? info.maxRelief
+      : Math.max(1, Math.min(Math.floor(requestedRelief), info.maxRelief));
+  const cost = getVaultDraftCost(relief);
+
+  // Debit the vault first, then route the relief through the shared payment
+  // applier (extra loan first, then principal) exactly like cash installments.
+  const applied = applyDebtPayment(
+    {
+      ...state,
+      estate: {
+        ...state.estate,
+        vaultMp: Math.max(0, state.estate.vaultMp - cost),
+      },
+    },
+    relief
+  );
+
+  let next: GameState = {
+    ...applied.state,
+    debt: {
+      ...applied.state.debt,
+      paidThisVisit: applied.state.debt.paidThisVisit + relief,
+    },
+  };
+  next = checkPayoffEnding(next);
+
+  const msg = `Drafted ${relief} MP of min-due from Estate Vault (-${cost} vault MP incl. ${VAULT_DRAFT_PREMIUM_PCT}% premium; ${getTotalDebt(next)} MP debt left).`;
+
+  return {
+    ok: true,
+    state: {
+      ...next,
+      flash: next.debt.ended ? next.flash : msg,
+    },
+    message: msg,
+    artUrl: resolveSceneAsset('dk_debt_ontime'),
+  };
+}

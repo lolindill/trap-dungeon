@@ -3,11 +3,13 @@ import { resolveNpcImage, resolveSceneAsset } from '../data/assetManifest';
 import { canSpendDayAp, isDayPhase } from '../engine/dayLoop';
 import {
   calcPrisonerRansom,
+  draftDebtFromVault,
   entertainEleonora,
   getDebtQuestProgress,
   getDebtSummary,
   getEleonoraVisitSceneContext,
   getExtraLoanInfo,
+  getVaultDraftInfo,
   handoverPrisonerForDebt,
   payDebt,
   requestDebtExtension,
@@ -15,6 +17,8 @@ import {
   rollDebtQuests,
   startOrProgressGraceQuest,
   takeExtraLoan,
+  VAULT_DRAFT_MAX_MIN_DUE_PCT,
+  VAULT_DRAFT_PREMIUM_PCT,
 } from '../engine/debt';
 import '../styles/estate.css';
 import type { GameState } from '../types/game';
@@ -45,6 +49,7 @@ export function DebtPanel({
 
   const summary = getDebtSummary(state);
   const loanInfo = getExtraLoanInfo(state);
+  const draftInfo = getVaultDraftInfo(state);
   const dayActive = isDayPhase(state);
   const isDebtVisit = state.mode === 'debt';
   const loanApCheck = canSpendDayAp(state, 'loan');
@@ -228,6 +233,40 @@ export function DebtPanel({
           {!isDebtVisit && !dayActive && (
             <div className="dk-help-hint" style={{ marginTop: 4 }}>
               🔒 Prepay unlocks during Day (AP) phase.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ticket 24: Vault Draft — pay min-due straight from the Estate Vault (vault-only sink) */}
+      {isDebtVisit && !state.debt.ended && summary.totalDebt > 0 && (
+        <div className="dk-card">
+          <div className="dk-row" style={{ marginBottom: 4 }}>
+            <strong style={{ color: 'var(--y)' }}>
+              VAULT DRAFT ({VAULT_DRAFT_PREMIUM_PCT}% PREMIUM · CAP{' '}
+              {VAULT_DRAFT_MAX_MIN_DUE_PCT}% MIN-DUE)
+            </strong>
+            <span className="dk-badge y">Vault: {draftInfo.vaultMp} MP</span>
+          </div>
+          <div className="dk-help-hint" style={{ marginBottom: 6 }}>
+            Pay part of this visit's Min Due straight from the Estate Vault —
+            vault MP only, cash MP untouched. Cap {VAULT_DRAFT_MAX_MIN_DUE_PCT}%
+            of Min Due per visit ({draftInfo.capRelief} MP) and the draft must be
+            the first payment of the visit.
+          </div>
+          <button
+            type="button"
+            className="dk-btn sm amber"
+            disabled={isBusy || !draftInfo.canDraft}
+            onClick={() => onUpdateState((prev) => draftDebtFromVault(prev).state)}
+          >
+            {draftInfo.canDraft
+              ? `Draft ${draftInfo.maxRelief} MP Debt for ${draftInfo.maxCost} Vault MP`
+              : 'Vault Draft Unavailable'}
+          </button>
+          {!draftInfo.canDraft && (
+            <div className="dk-help-hint" style={{ marginTop: 4 }}>
+              🔒 {draftInfo.reason}
             </div>
           )}
         </div>
