@@ -63,6 +63,17 @@ export interface PrisonJobDef {
     affVesper?: number;
   };
   prisonerDelta: Partial<Record<PactStatKey, number>>;
+  /** Ticket 23: settle-time risk rolls. Exactly one branch can fire per worker per settle. */
+  risk?: {
+    /** Worker hurt -> cond 'injured', stamina -15. */
+    accident?: number;
+    /** Altar only: worker dies (removed from roster). */
+    sacrifice?: number;
+    /** Bait only: heroes free the worker (removed from roster). */
+    rescue?: number;
+    /** Decoy only: worker flees with intel (removed from roster). */
+    betrayal?: number;
+  };
   aptitude: { stat: 'shame' | 'resist' | 'stamina' | 'pleasure' | 'corr' | 'terror'; dir: 1 | -1 }[];
   desc: string;
   assetKey: string;
@@ -808,7 +819,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'stamina', dir: 1 },
       { stat: 'terror', dir: -1 },
     ],
-    desc: '22.5% Ransom MP, Renown +2 · Terror 1 (death risk)',
+    desc: '22.5% Ransom MP, Renown +2 · Terror 1',
     assetKey: 'dk_job_arena',
   },
   {
@@ -859,7 +870,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'shame', dir: 1 },
       { stat: 'resist', dir: -1 },
     ],
-    desc: 'Approval +2, Housing +1, Plague risk down · Shame 2',
+    desc: 'Approval +2, Housing +1 per settle · Shame 2',
     assetKey: 'dk_fac_housing',
   },
   {
@@ -907,7 +918,8 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
     outputs: {},
     prisonerDelta: { terror: 3 },
     aptitude: [{ stat: 'stamina', dir: 1 }],
-    desc: 'Trap Upgrade Cost -5%/worker (max -15%) · 2% accident',
+    risk: { accident: 0.02 },
+    desc: 'Terror +3 per settle · 2% accident',
     assetKey: 'dk_fac_smithy',
   },
   {
@@ -924,7 +936,8 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'stamina', dir: 1 },
       { stat: 'terror', dir: -1 },
     ],
-    desc: 'New Trap +1 Grade chance +15% · Terror 1 · 3% accident',
+    risk: { accident: 0.03 },
+    desc: 'Terror +6, Pleasure +4 per settle · Terror 1 · 3% accident',
     assetKey: 'dk_fac_workshop',
   },
   {
@@ -941,7 +954,8 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'resist', dir: -1 },
       { stat: 'shame', dir: 1 },
     ],
-    desc: 'Exposes next raid weakness · Obey 2 · 10% betrayal',
+    risk: { betrayal: 0.1 },
+    desc: 'Obey 2 · 10% betrayal (flees the estate)',
     assetKey: 'dk_fac_spy',
   },
   {
@@ -958,6 +972,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'corr', dir: 1 },
       { stat: 'terror', dir: 1 },
     ],
+    risk: { sacrifice: 0.03 },
     desc: 'Fear +4, Lust +2 · Terror 2 · 3% sacrifice risk',
     assetKey: 'dk_job_altar',
   },
@@ -975,7 +990,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'pleasure', dir: 1 },
       { stat: 'resist', dir: -1 },
     ],
-    desc: 'Other captives training +15% · Obey 1',
+    desc: 'Shame +6, Resist -3 per settle · Obey 1',
     assetKey: 'dk_fac_trainhall',
   },
   {
@@ -991,6 +1006,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'shame', dir: 1 },
       { stat: 'terror', dir: 1 },
     ],
+    risk: { rescue: 0.25 },
     desc: 'Floor role · Heroes -1 roll on floor (25% rescue risk)',
     assetKey: 'dk_job_bait',
   },
@@ -1041,7 +1057,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'shame', dir: 1 },
       { stat: 'stamina', dir: 1 },
     ],
-    desc: '+8 MP & private sale bids · Market',
+    desc: '+8 MP per settle · Market',
     assetKey: 'dk_pa_auction',
   },
   {
@@ -1054,6 +1070,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
     outputs: { fear: 2 },
     prisonerDelta: { terror: 6 },
     aptitude: [{ stat: 'terror', dir: 1 }],
+    risk: { accident: 0.03 },
     desc: 'Fear +2, other captives Resist -1 · 3% accident',
     assetKey: 'dk_pa_tort',
   },
@@ -1071,7 +1088,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
       { stat: 'stamina', dir: 1 },
       { stat: 'pleasure', dir: 1 },
     ],
-    desc: '+6 MP · Obey 1 · Monster breeding & parasite risk',
+    desc: '+6 MP · Obey 1',
     assetKey: 'dk_dark_tent',
   },
   {
@@ -1101,6 +1118,7 @@ export const PRISON_JOBS: readonly PrisonJobDef[] = [
     outputs: { fear: 3, order: 1 },
     prisonerDelta: { terror: 8 },
     aptitude: [{ stat: 'terror', dir: 1 }],
+    risk: { accident: 0.05 },
     desc: 'Fear +3, Order +1 · Gibbet · 5% accident',
     assetKey: 'dk_fac_gibbet',
   },
