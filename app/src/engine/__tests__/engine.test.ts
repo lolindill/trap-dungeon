@@ -117,6 +117,69 @@ describe('dungeon building & Trap Blueprint Shortcuts', () => {
     state = installBlueprintToFloor(state, 1, bp).state;
     const baseDc = getFloorDC(state.floors[0]);
     expect(baseDc).toBeGreaterThanOrEqual(8);
+
+    // Ticket 18: Lilim DC enters through the raidMods seam (after the shield
+    // term, inside the council caps). A neutral state adds nothing.
+    expect(getFloorDC(state.floors[0], state)).toBe(baseDc);
+
+    // firstDcOnce: +1 on the first room of the raid only (the raidFirstRoom
+    // flag flips off after the first roll), stacked linearly with the shield
+    // relic term on floor 1.
+    const raiding = {
+      ...state,
+      mode: 'raid' as const,
+      raidFirstRoom: true,
+      estate: {
+        ...state.estate,
+        perks: { ...state.estate.perks, firstDcOnce: true },
+      },
+    };
+    expect(getFloorDC(raiding.floors[0], raiding)).toBe(baseDc + 1);
+    // Same floor once the first room has resolved: no more firstRoom bucket.
+    expect(getFloorDC(raiding.floors[0], { ...raiding, raidFirstRoom: false })).toBe(baseDc);
+
+    // Lilim allFloorsDcBonus (allDcNext perk) applies to every occupied floor
+    // regardless of the first-room flag — but empty floors stay untouched.
+    const with2 = installBlueprintToFloor(state, 2, bp).state;
+    const baseDc2 = getFloorDC(with2.floors[1]);
+    const allFloors = {
+      ...with2,
+      mode: 'raid' as const,
+      raidFirstRoom: false,
+      estate: {
+        ...with2.estate,
+        perks: { ...with2.estate.perks, allDcNext: true },
+      },
+    };
+    expect(getFloorDC(allFloors.floors[1], allFloors)).toBe(baseDc2 + 1);
+    expect(getFloorDC(allFloors.floors[0], allFloors)).toBe(baseDc + 1);
+
+    // Council caps hold at the consumer: Lilim firstRoom stack (aff +2,
+    // stage 3 +1, firstDcOnce +1, grail +1 = raw 5) clamps to +3, and the
+    // allFloors bucket (+1) still fits inside the total +4 budget.
+    const stacked = {
+      ...with2,
+      mode: 'raid' as const,
+      raidFirstRoom: true,
+      officers: {
+        ...with2.officers,
+        lilim: { ...with2.officers.lilim, aff: 120, stage: 3 },
+      },
+      estate: {
+        ...with2.estate,
+        facilities: { ...with2.estate.facilities, grail: 1 },
+        perks: {
+          ...with2.estate.perks,
+          firstDcOnce: true,
+          allDcNext: true,
+        },
+      },
+    };
+    expect(getFloorDC(stacked.floors[0], stacked)).toBe(baseDc + 4);
+    // Non-first room: only the allFloors bucket survives (capped +2 max).
+    expect(getFloorDC(stacked.floors[0], { ...stacked, raidFirstRoom: false })).toBe(
+      baseDc + 1
+    );
   });
 });
 

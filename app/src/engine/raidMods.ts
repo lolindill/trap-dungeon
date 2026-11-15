@@ -2,7 +2,7 @@ import { CFG } from '../data/constants';
 import type { FloorState, GameState } from '../types/game';
 import { getEstateRaidModifiers } from './estate';
 import { resolveExpeditionAftereffects } from './expedition';
-import { getNextRaidDcBonus } from './officers';
+import { getNextRaidDcBonus, getPrepIntelLeakBonus } from './officers';
 import { clamp } from './rng';
 
 /**
@@ -13,6 +13,7 @@ import { clamp } from './rng';
  *   3. `getNextRaidDcBonus`         (Lilim affection / one-shot DC perks)
  *   4. `resolveExpeditionAftereffects` (war-party aftereffects on hero mods)
  *   5. Mole intel                   (an active double-agent gives hero mods -2)
+ *   6. `getPrepIntelLeakBonus`      (Lilim stage-2+ / `prepIntelOnce` → prep intel)
  *
  * Council caps (LOCKED, enforced HERE so no consumer can bypass):
  *   - total external DC delta per roll: [-4, +4]
@@ -245,6 +246,13 @@ export function resolveRaidModifiers(state: GameState, ctx: RaidModsCtx): RaidMo
   // ---- 6. Prep intel (consumed at the workflow.ts prep-intel site) ----
   let prepIntelDelta = 0;
   let prepIntelZero = false;
+  // Ticket 18: Lilim officer-side intel leak (stage >= 2 / `prepIntelOnce`
+  // perk) enters here as a resolver source — never at the consumer.
+  const lilimPrepIntel = getPrepIntelLeakBonus(state).prepIntel;
+  if (lilimPrepIntel > 0) {
+    prepIntelDelta += lilimPrepIntel;
+    notes.push(`lilim:prepIntel ${fmt(lilimPrepIntel)}`);
+  }
   if (estate.prepIntelDelta !== 0) {
     prepIntelDelta += estate.prepIntelDelta;
     notes.push(`estate:prepIntel ${fmt(estate.prepIntelDelta)}`);

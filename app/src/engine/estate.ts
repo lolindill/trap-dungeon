@@ -364,12 +364,14 @@ export function getFacilityUpgradeState(
       reason: 'Max Lv.3 reached',
     };
   }
+  // Ticket 18: the returned/checked cost is the effective (buildCostMult) price.
+  const effCost = getEstateBuildCost(state, def.costs[currentLv]);
   if (currentLv >= maxLvForTown) {
     return {
       canBuild: false,
       currentLv,
       maxLvForTown,
-      cost: def.costs[currentLv] ?? null,
+      cost: effCost,
       reason: `Requires Town Lv.${currentLv + 1}`,
     };
   }
@@ -381,12 +383,12 @@ export function getFacilityUpgradeState(
         canBuild: false,
         currentLv,
         maxLvForTown,
-        cost: def.costs[currentLv] ?? null,
+        cost: effCost,
         reason: `Requires ${reqName} Lv.${def.prereq.lv}`,
       };
     }
   }
-  const cost = def.costs[currentLv];
+  const cost = effCost;
   if (!isDayPhase(state)) {
     return {
       canBuild: false,
@@ -967,6 +969,17 @@ export function resolveExploreEvent(
 }
 
 // --- Estate Modifiers on Raid ---
+
+/**
+ * Ticket 18 triage: `buildCostMult` (order penalty + housing reward, floor 0.7)
+ * is a pure estate-economy cost knob — it never touches DC or hero strength,
+ * so it is wired into the estate construction purchase paths (facilities,
+ * landmarks, wonders). Rounded DOWN, consistent with the dungeon-side
+ * upgrade discount / dismantle refund rounding.
+ */
+export function getEstateBuildCost(state: GameState, baseCost: number): number {
+  return Math.max(0, Math.floor(baseCost * getEstateRaidModifiers(state).buildCostMult));
+}
 
 export function getEstateRaidModifiers(state: GameState): EstateRaidModifiers {
   const t = state.town;
@@ -1934,15 +1947,17 @@ export function buildLandmark(state: GameState, key: LandmarkKey): EstateActionR
     const msg = `${def.name} is already constructed.`;
     return { ok: false, state: { ...state, flash: msg }, message: msg };
   }
-  if (state.points < def.cost) {
-    const msg = `${def.name} requires ${def.cost} MP.`;
+  // Ticket 18: estate install cost scaled by buildCostMult (order / housing).
+  const cost = getEstateBuildCost(state, def.cost);
+  if (state.points < cost) {
+    const msg = `${def.name} requires ${cost} MP.`;
     return { ok: false, state: { ...state, flash: msg }, message: msg };
   }
 
-  const label = `Built ${def.icon} ${def.name} (-${def.cost} MP)`;
+  const label = `Built ${def.icon} ${def.name} (-${cost} MP)`;
   const next: GameState = {
     ...state,
-    points: state.points - def.cost,
+    points: state.points - cost,
     estate: {
       ...state.estate,
       landmarks: {
@@ -2210,15 +2225,17 @@ export function buildWonder(state: GameState, key: WonderKey): EstateActionResul
     const msg = 'Requires 1 AP to commission a Great Wonder.';
     return { ok: false, state: { ...state, flash: msg }, message: msg };
   }
-  if (state.points < def.cost) {
-    const msg = `${def.name} requires ${def.cost} MP.`;
+  // Ticket 18: estate install cost scaled by buildCostMult (order / housing).
+  const cost = getEstateBuildCost(state, def.cost);
+  if (state.points < cost) {
+    const msg = `${def.name} requires ${cost} MP.`;
     return { ok: false, state: { ...state, flash: msg }, message: msg };
   }
 
-  const msg = `Built Great Wonder ${def.icon} ${def.name} (-${def.cost} MP) — ${def.effectDesc}`;
+  const msg = `Built Great Wonder ${def.icon} ${def.name} (-${cost} MP) — ${def.effectDesc}`;
   const next: GameState = {
     ...state,
-    points: state.points - def.cost,
+    points: state.points - cost,
     ap: state.ap - 1,
     apUsed: { ...state.apUsed, [`wonder_${key}`]: true },
     wonders: { ...state.wonders, [key]: true },
