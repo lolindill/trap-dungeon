@@ -8,6 +8,7 @@ import {
   SETTLEMENT_CRISES,
 } from '../../data/estateData';
 import type { ExploreEffectSpec } from '../../data/estateData';
+import { PRISON_JOB_MAP, SERVANT_MP_BY_GRADE } from '../../data/prisonData';
 import type { Prisoner, RelicKey } from '../../types/game';
 import { calcRestMp, finishManagementSettle, startNewDay } from '../dayLoop';
 import {
@@ -56,6 +57,7 @@ import {
   performOfficerInteraction,
   talkToOfficer,
 } from '../officers';
+import { getJobSettleYield, getJobYieldPreview } from '../prison';
 import { createInitialGameState } from '../saveLoad';
 
 afterEach(() => {
@@ -920,5 +922,232 @@ describe('Debt: Vault Draft against Min-Due (Ticket 24)', () => {
     // points dropped by exactly the cash portion (60), vault already debited.
     expect(cashRest.state.points).toBe(40);
     expect(cashRest.state.estate.vaultMp).toBe(500 - 72);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 23: Job Settle Ledger from Preview Math
+// ---------------------------------------------------------------------------
+describe('Ticket 23: Job Settle Ledger from Preview Math', () => {
+  const SETTLE_OPTS = { rollCrisis: false, jobRisks: false } as const;
+
+  it('pays 3-star workers more than 1-star on the same job and matches preview exactly', () => {
+    // Dairy aptitude = pleasure + stamina. 1-star vs 3-star dairy workers.
+    const w1 = makePrisoner(1, { pleasure: 5, stamina: 50, job: 'dairy' });
+    const w3 = makePrisoner(2, { pleasure: 90, stamina: 100, job: 'dairy' });
+    const state = makeDayState({ prisoners: [w1, w3] });
+
+    const y1 = getJobSettleYield(state, w1, 'dairy');
+    const y3 = getJobSettleYield(state, w3, 'dairy');
+    expect(y1.stars).toBe(1);
+    expect(y3.stars).toBe(3);
+    expect(y1.mp).toBe(6); // round(8 * 0.7)
+    expect(y1.food).toBe(4); // round(5 * 0.7)
+    expect(y3.mp).toBe(11); // round(8 * 1.4)
+    expect(y3.food).toBe(7);
+    expect(y3.mp).toBeGreaterThan(y1.mp);
+
+    const ledger = computeManagementSettle(state);
+    expect(ledger.jobMp).toBe(17);
+    expect(ledger.jobFood).toBe(11);
+
+    // Parity: solo worker ledger == preview == shared math.
+    const soloState = makeDayState({ prisoners: [w3] });
+    const soloLedger = computeManagementSettle(soloState);
+    expect(soloLedger.jobMp).toBe(11);
+    expect(soloLedger.jobMp).toBe(getJobYieldPreview(soloState, w3, 'dairy').mp);
+    expect(soloLedger.jobMp).toBe(getJobSettleYield(soloState, w3, 'dairy').mp);
+  });
+
+  it('charges job staminaCost per settle and keeps the rest/spa loop viable', () => {
+    // food 40 -> base regen 15. Farm worker (cost 8): 40 - 8 + 15 = 47.
+    const worker = makePrisoner(1, { stamina: 40, job: 'farm' });
+    const bystander = makePrisoner(2, { stamina: 40 });
+    const res = applyManagementSettle(
+      makeDayState({ prisoners: [worker, bystander] }),
+      SETTLE_OPTS
+    );
+    const settledWorker = res.state.prisoners.find((p) => p.pid === 1)!;
+    const settledBystander = res.state.prisoners.find((p) => p.pid === 2)!;
+    expect(settledBystander.stamina).toBe(55); // 40 + 15 regen
+    expect(settledWorker.stamina).toBe(47); // 40 - 8 work + 15 regen
+    expect(settledBystander.stamina - settledWorker.stamina).toBe(8);
+
+    // Viability: Spa Lv3 + food 60 regen (25+20=45) beats the heaviest job (arena 15).
+    const spaState = makeDayState({
+      prisoners: [makePrisoner(1, { stamina: 50, job: 'arena' })],
+      town: { ...createInitialGameState().town, food: 60 },
+      estate: {
+        ...createInitialGameState().estate,
+        facilities: { spa: 3 },
+      },
+    });
+    const spaRes = applyManagementSettle(spaState, SETTLE_OPTS);
+    expect(spaRes.state.prisoners[0].stamina).toBe(80); // 50 - 15 + 45
+  });
+
+  it('halves job output for exhausted workers (stamina < 30) and flags it in the preview', () => {
+    const tired = makePrisoner(1, { pleasure: 90, stamina: 25, job: 'dairy' });
+    const state = makeDayState({ prisoners: [tired] });
+
+    const y = getJobSettleYield(state, tired, 'dairy');
+    expect(y.stars).toBe(2);
+    expect(y.lowStamina).toBe(true);
+    expect(y.mp).toBe(4); // round(8 * 1.0 * 0.5)
+    expect(y.food).toBe(3); // round(5 * 0.5)
+
+    const preview = getJobYieldPreview(state, tired, 'dairy');
+    expect(preview.mp).toBe(4);
+    expect(preview.stats).toContain('Exhausted (1/2 output)');
+
+    const ledger = computeManagementSettle(state);
+    expect(ledger.jobMp).toBe(4);
+    expect(ledger.jobFood).toBe(3);
+
+    // Right at the threshold (30) the worker is NOT exhausted.
+    const ok = getJobSettleYield(state, { ...tired, stamina: 30 }, 'dairy');
+    expect(ok.lowStamina).toBe(false);
+    expect(ok.mp).toBe(8);
+  });
+
+  it('applies the job prisonerDelta conditioning at settle', () => {
+    const stockWorker = makePrisoner(1, { shame: 5, job: 'square' }); // shame +8
+    const farmWorker = makePrisoner(2, { resist: 40, job: 'farm' }); // resist -2
+    const res = applyManagementSettle(
+      makeDayState({ prisoners: [stockWorker, farmWorker] }),
+      SETTLE_OPTS
+    );
+    expect(res.state.prisoners[0].shame).toBe(13); // 5 + 8
+    expect(res.state.prisoners[1].resist).toBe(38); // 40 - 2
+  });
+
+  it('rolls job risks: bait rescue, altar sacrifice, decoy betrayal, gibbet accident', () => {
+    const runWithRoll = (job: string, roll: number) => {
+      const spy = vi.spyOn(Math, 'random').mockReturnValue(roll);
+      const res = applyManagementSettle(
+        makeDayState({ prisoners: [makePrisoner(1, { job })] }),
+        { rollCrisis: false }
+      );
+      spy.mockRestore();
+      return res;
+    };
+
+    // Every roll is 0 -> the first (and only) risk branch of each job fires.
+    const rescue = runWithRoll('bait', 0);
+    expect(rescue.state.prisoners).toHaveLength(0);
+    expect(rescue.ledger.jobRiskNotes[0]).toContain('rescued');
+
+    const sacrifice = runWithRoll('altar', 0);
+    expect(sacrifice.state.prisoners).toHaveLength(0);
+    expect(sacrifice.ledger.jobRiskNotes[0]).toContain('sacrificed');
+
+    const betrayal = runWithRoll('decoy', 0);
+    expect(betrayal.state.prisoners).toHaveLength(0);
+    expect(betrayal.ledger.jobRiskNotes[0]).toContain('betrayed');
+
+    const accident = runWithRoll('gibbetx', 0);
+    expect(accident.state.prisoners).toHaveLength(1);
+    expect(accident.state.prisoners[0].cond).toBe('injured');
+    expect(accident.state.prisoners[0].stamina).toBe(85); // regen applied, then -15
+    expect(accident.ledger.jobRiskNotes[0]).toContain('accident');
+
+    // A safe roll (0.99 beats every job chance incl. bait 25%) keeps everyone.
+    const safe = runWithRoll('bait', 0.99);
+    expect(safe.state.prisoners).toHaveLength(1);
+    expect(safe.ledger.jobRiskNotes).toHaveLength(0);
+  });
+
+  it('rolls tavern server intel (+1 Intel at 30%) per settle', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const lucky = applyManagementSettle(
+      makeDayState({ prisoners: [makePrisoner(1, { job: 'tavern' })] }),
+      { rollCrisis: false }
+    );
+    expect(lucky.state.prisoners[0].intel).toBe(1);
+    expect(lucky.ledger.jobRiskNotes[0]).toContain('Intel');
+    spy.mockRestore();
+
+    const dry = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const unlucky = applyManagementSettle(
+      makeDayState({ prisoners: [makePrisoner(1, { job: 'tavern' })] }),
+      { rollCrisis: false }
+    );
+    expect(unlucky.state.prisoners[0].intel).toBeUndefined();
+    dry.mockRestore();
+  });
+
+  it('applies Cell Boss & Torture Demo auras: other captives Resist -1 each', () => {
+    const trusty = makePrisoner(1, { resist: 40, job: 'trusty' });
+    const demo = makePrisoner(2, { resist: 40, job: 'tortdemo' });
+    const bystander = makePrisoner(3, { resist: 40 });
+    const res = applyManagementSettle(
+      makeDayState({ prisoners: [trusty, demo, bystander] }),
+      SETTLE_OPTS
+    );
+    expect(res.state.prisoners[0].resist).toBe(39); // self-exempt trusty, hit by demo
+    expect(res.state.prisoners[1].resist).toBe(39); // self-exempt demo, hit by trusty
+    expect(res.state.prisoners[2].resist).toBe(38); // -1 trusty -1 tortdemo
+  });
+
+  it('pays Manor Valet previewed Vesper affinity (hired x2 preserved)', () => {
+    const valet = makePrisoner(1, { job: 'manor' });
+    const res = applyManagementSettle(
+      makeDayState({ prisoners: [valet] }),
+      SETTLE_OPTS
+    );
+    expect(res.state.officers.vesper.aff).toBe(1);
+
+    const hiredValet = makePrisoner(1, { job: 'manor', converted: 'hired' });
+    const hiredRes = applyManagementSettle(
+      makeDayState({ prisoners: [hiredValet] }),
+      SETTLE_OPTS
+    );
+    expect(hiredRes.state.officers.vesper.aff).toBe(2);
+  });
+
+  it('keeps dairy headline yields honest vs the servant conversion table', () => {
+    // Dairy doc promised +8 MP/+5 food: now paid exactly at 2-star baseline.
+    const base = makePrisoner(1, { pleasure: 50, stamina: 50, job: 'dairy' });
+    const baseY = getJobSettleYield(makeDayState({ prisoners: [base] }), base, 'dairy');
+    expect(baseY.stars).toBe(2);
+    expect(baseY.mp).toBe(8);
+    expect(baseY.food).toBe(5);
+    // A mundane C-grade servant conversion (9 MP, no stamina/AP cost) still
+    // outpays the baseline dairy job.
+    expect(baseY.mp).toBeLessThan(SERVANT_MP_BY_GRADE.C);
+
+    // Even max investment (3-star hired dairy, Obey-trained + facility) must
+    // not trivially outpay a top-end servant conversion (SSS = 30 MP).
+    const hired = makePrisoner(1, {
+      pleasure: 90,
+      stamina: 100,
+      job: 'dairy',
+      converted: 'hired',
+    });
+    const hiredY = getJobSettleYield(makeDayState({ prisoners: [hired] }), hired, 'dairy');
+    expect(hiredY.mp).toBe(22); // round(8 * 1.4 * 2) = 22
+    expect(hiredY.mp).toBeLessThanOrEqual(SERVANT_MP_BY_GRADE.SSS);
+  });
+
+  it('keeps preview and settle ledger in parity for all 24 jobs (fresh + exhausted)', () => {
+    for (const job of Object.values(PRISON_JOB_MAP)) {
+      const fresh = makePrisoner(1, { stamina: 100, job: job.key });
+      const freshState = makeDayState({ prisoners: [fresh] });
+      const freshLedger = computeManagementSettle(freshState);
+      const freshY = getJobSettleYield(freshState, fresh, job.key);
+      const freshPreview = getJobYieldPreview(freshState, fresh, job.key);
+      expect(freshLedger.jobMp).toBe(freshY.mp);
+      expect(freshPreview.mp).toBe(freshY.mp);
+      expect(freshLedger.jobFood).toBe(freshY.food);
+      expect(freshLedger.jobFear).toBe(freshY.fear);
+      expect(freshLedger.jobLust).toBe(freshY.lust);
+
+      const tired = makePrisoner(1, { stamina: 10, job: job.key });
+      const tiredState = makeDayState({ prisoners: [tired] });
+      const tiredLedger = computeManagementSettle(tiredState);
+      const tiredY = getJobSettleYield(tiredState, tired, job.key);
+      expect(tiredY.lowStamina).toBe(true);
+      expect(tiredLedger.jobMp).toBe(tiredY.mp);
+    }
   });
 });

@@ -24,6 +24,7 @@ import {
   type SettlementCrisisDef,
   type TownLevelDef,
 } from '../data/estateData';
+import { PRISON_JOB_MAP } from '../data/prisonData';
 import type {
   GameState,
   MonsterInstance,
@@ -46,6 +47,7 @@ import {
 } from './endings';
 import { processMonsterNightlyCycle } from './monsters';
 import { grantOfficerAffinity } from './officers';
+import { getJobSettleYield } from './prison';
 import { buildNemesisFromHero } from './realm';
 import { clamp, pickOne, pickWeighted, randInt, uid } from './rng';
 
@@ -91,6 +93,10 @@ export interface ManagementSettleLedger {
   popManaIncome: number;
   servantMp: number;
   jobMp: number;
+  jobFood: number;
+  jobFear: number;
+  jobLust: number;
+  jobRiskNotes: string[];
   dancerMp: number;
   vesperBonusMp: number;
   eleonoraRomanceMp: number;
@@ -1031,13 +1037,19 @@ export function computeManagementSettle(
   const popCap = calcPopCap(state);
   const policy = TOWN_POLICY_MODS[t.policy] ?? TOWN_POLICY_MODS.normal;
 
-  // 1. Prisoner conversions & jobs
+  // 1. Prisoner conversions & jobs.
+  // Ticket 23: job yields come from the same preview math shown in the prison
+  // UI (getJobSettleYield) — aptitude stars, talent marks, hired x2 and the
+  // low-stamina half-output rule all apply at settle exactly as previewed.
   let servantMp = 0;
   let jobMp = 0;
   let jobFood = 0;
   let jobApproval = 0;
   let jobOrder = 0;
   let jobRenown = 0;
+  let jobFear = 0;
+  let jobLust = 0;
+  let toiletHousing = 0;
   let dancerCount = 0;
   let hiredSalary = 0;
   let servantLust = 0;
@@ -1058,22 +1070,15 @@ export function computeManagementSettle(
     }
 
     if (p.job) {
-      const mult = p.converted === 'hired' ? 2 : 1;
-      if (p.job === 'farm') jobFood += 3 * mult;
-      else if (p.job === 'dairy') jobFood += 2 * mult;
-      else if (p.job === 'bath' || p.job === 'brothel') {
-        jobMp += 6 * mult;
-        jobApproval += 1 * mult;
-      } else if (p.job === 'square' || p.job === 'tavern') {
-        jobMp += 5 * mult;
-      } else if (p.job === 'barracks') {
-        jobOrder += 2 * mult;
-      } else if (p.job === 'arena') {
-        jobRenown += 1 * mult;
-        jobMp += 4 * mult;
-      } else {
-        jobMp += 4 * mult;
-      }
+      const y = getJobSettleYield(state, p, p.job);
+      jobMp += y.mp;
+      jobFood += y.food;
+      jobApproval += y.approval;
+      jobOrder += y.order;
+      jobRenown += y.renown;
+      jobFear += y.fear;
+      jobLust += y.lust;
+      if (p.job === 'toilet') toiletHousing += 1;
     }
   }
 
@@ -1097,10 +1102,10 @@ export function computeManagementSettle(
     approvalAfter = clamp(approvalAfter - 3, 0, 100);
   }
 
-  // 3. Housing
+  // 3. Housing (Latrine Servitor adds +1 housing per worker)
   const housingDecay = popAfter >= popCap * 0.9 ? 3 : 1;
   const housingAfter = clamp(
-    t.housing - housingDecay + 2 * (fac.housing ?? 0),
+    t.housing - housingDecay + 2 * (fac.housing ?? 0) + toiletHousing,
     0,
     100
   );
@@ -1227,14 +1232,19 @@ export function computeManagementSettle(
     vaultDeposit;
   const pointsAfter = Math.max(0, state.points + netMpDelta);
 
-  // 7. Fear & Lust additions + 0.85 decay
+  // 7. Fear & Lust additions + 0.85 decay (job fear/lust now paid — Ticket 23)
   const fearWithFac = clamp(
-    state.fear + 2 * (fac.shrine ?? 0) + (fac.arena ?? 0),
+    state.fear + 2 * (fac.shrine ?? 0) + (fac.arena ?? 0) + jobFear,
     0,
     100
   );
   const lustWithFac = clamp(
-    state.lust + 2 * (fac.brothel ?? 0) + 2 * (fac.beastpen ?? 0) + servantLust + petLust,
+    state.lust +
+      2 * (fac.brothel ?? 0) +
+      2 * (fac.beastpen ?? 0) +
+      servantLust +
+      petLust +
+      jobLust,
     0,
     100
   );
@@ -1365,6 +1375,10 @@ export function computeManagementSettle(
     popManaIncome,
     servantMp,
     jobMp,
+    jobFood,
+    jobFear,
+    jobLust,
+    jobRiskNotes: [],
     dancerMp,
     vesperBonusMp,
     eleonoraRomanceMp,
@@ -1539,6 +1553,8 @@ export function applyManagementSettle(
     forceCrisisId?: string;
     forceSiege?: boolean;
     forceJailbreak?: boolean;
+    /** Ticket 23: roll job accident/sacrifice/rescue/betrayal chances (default on). */
+    jobRisks?: boolean;
   }
 ): { state: GameState; ledger: ManagementSettleLedger; crisis: SettlementCrisisDef | null } {
   const ledger = computeManagementSettle(state, { allowRiot: options?.allowRiot });
@@ -1550,20 +1566,84 @@ export function applyManagementSettle(
   const baseStamRegen = foodAfter >= 60 ? 25 : foodAfter >= 20 ? 15 : 0;
   const reformLv = state.estate.facilities.reform ?? 0;
   const reformDrop = [0, 3, 5, 8][reformLv] ?? 0;
+  const hasTrusty = state.prisoners.some((p) => p.job === 'trusty');
+  const hasTortDemo = state.prisoners.some((p) => p.job === 'tortdemo');
 
-  let nextPrisoners = state.prisoners.map((p) => {
-    const nextStam = clamp(p.stamina + baseStamRegen + spaRegen, 0, p.staminaMax);
+  let nextPrisoners: Prisoner[] = state.prisoners.map((p): Prisoner => {
+    // Ticket 23: working a job costs stamina (charged before nightly regen —
+    // regen 15-45 vs job cost 5-15 keeps the rest/spa loop viable) and applies
+    // the job's prisonerDelta conditioning.
+    const jobDef = p.job ? PRISON_JOB_MAP[p.job] : null;
+    const delta = jobDef?.prisonerDelta;
+    const nextStam = clamp(
+      p.stamina - (jobDef?.staminaCost ?? 0) + baseStamRegen + spaRegen,
+      0,
+      p.staminaMax
+    );
+    // Cell Boss & Torture Demo auras: other captives Resist -1 per settle each.
+    const auraResist =
+      (hasTrusty && p.job !== 'trusty' ? 1 : 0) +
+      (hasTortDemo && p.job !== 'tortdemo' ? 1 : 0);
     const drop = p.job || p.legend ? Math.floor(reformDrop / 2) : reformDrop;
-    const nextResist = clamp(p.resist - drop, 0, 100);
+    const nextResist = clamp(
+      p.resist + (delta?.resist ?? 0) - drop - auraResist,
+      0,
+      100
+    );
     const healInj = spaLv >= 2 && p.cond === 'injured' ? '' : p.cond;
     return {
       ...p,
       stamina: nextStam,
       dying: nextStam >= 20 ? false : p.dying,
       resist: nextResist,
+      pleasure: clamp(p.pleasure + (delta?.pleasure ?? 0), 0, 100),
+      terror: clamp(p.terror + (delta?.terror ?? 0), 0, 100),
+      shame: clamp(p.shame + (delta?.shame ?? 0), 0, 100),
+      corr: clamp(p.corr + (delta?.corr ?? 0), 0, 100),
       cond: healInj as Prisoner['cond'],
     };
   });
+
+  // Ticket 23: job risk rolls — at most one branch fires per worker per settle.
+  const jobRiskNotes: string[] = [];
+  if (options?.jobRisks !== false) {
+    const survivors: Prisoner[] = [];
+    for (const p of nextPrisoners) {
+      const jobDef = p.job ? PRISON_JOB_MAP[p.job] : null;
+      // Tavern side-roll: 30% chance to pick up +1 Intel while serving.
+      if (p.job === 'tavern' && Math.random() < 0.3) {
+        jobRiskNotes.push(`${p.name} overheard guild rumors serving at the Tavern (+1 Intel).`);
+        survivors.push({ ...p, intel: (p.intel ?? 0) + 1 });
+        continue;
+      }
+      const risk = jobDef?.risk;
+      if (jobDef && risk) {
+        if (risk.sacrifice && Math.random() < risk.sacrifice) {
+          jobRiskNotes.push(`${p.name} was claimed by the ${jobDef.label} (sacrificed).`);
+          continue;
+        }
+        if (risk.rescue && Math.random() < risk.rescue) {
+          jobRiskNotes.push(`Heroes stormed in and rescued ${p.name} from the ${jobDef.label}!`);
+          continue;
+        }
+        if (risk.betrayal && Math.random() < risk.betrayal) {
+          jobRiskNotes.push(`${p.name} betrayed the estate and fled from the ${jobDef.label}.`);
+          continue;
+        }
+        if (risk.accident && Math.random() < risk.accident) {
+          jobRiskNotes.push(`${p.name} was hurt in a ${jobDef.label} accident (Injured, Stamina -15).`);
+          survivors.push({
+            ...p,
+            cond: 'injured',
+            stamina: clamp(p.stamina - 15, 0, p.staminaMax),
+          });
+          continue;
+        }
+      }
+      survivors.push(p);
+    }
+    nextPrisoners = survivors;
+  }
 
   // Pet owner affinity gain
   let working: GameState = {
@@ -1602,10 +1682,19 @@ export function applyManagementSettle(
     },
   };
 
-  for (const p of state.prisoners) {
+  for (const p of nextPrisoners) {
     if (p.converted === 'pet') {
       const targetOfficer = p.owner === 'L' ? 'lilim' : 'vesper';
       working = grantOfficerAffinity(working, targetOfficer, 1).state;
+    }
+    // Ticket 23: Manor Valet pays its previewed Vesper Affinity per settle
+    // (scaled by aptitude/hired/low-stamina via the shared job math).
+    if (p.job && PRISON_JOB_MAP[p.job]?.outputs.affVesper) {
+      const y = getJobSettleYield(working, p, p.job);
+      if (y.affVesper > 0) {
+        const targetOfficer = p.owner === 'L' ? 'lilim' : 'vesper';
+        working = grantOfficerAffinity(working, targetOfficer, y.affVesper).state;
+      }
     }
   }
 
@@ -1616,7 +1705,7 @@ export function applyManagementSettle(
     const goKey = ledger.pendingGameOver;
     return {
       state: enterGameOver(working, goKey),
-      ledger,
+      ledger: { ...ledger, jobRiskNotes },
       crisis: null,
     };
   }
@@ -1697,7 +1786,7 @@ export function applyManagementSettle(
             ? 'M.Settle: Prison Jailbreak plot requires suppression!'
             : `M.Settle complete (${ledger.netMpDelta >= 0 ? '+' : ''}${ledger.netMpDelta} MP).`,
     },
-    ledger,
+    ledger: { ...ledger, jobRiskNotes },
     crisis,
   };
 }

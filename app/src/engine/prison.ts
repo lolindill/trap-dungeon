@@ -1046,17 +1046,61 @@ export function canAssignJob(
   return { ok: true };
 }
 
-export function getJobYieldPreview(
+/**
+ * Ticket 23: low-stamina rule. A worker below 30 stamina at settle time
+ * produces half output (all job yields, incl. MP/food and affVesper).
+ * Nightly regen (15 base + spa) keeps the rest/spa loop viable.
+ */
+export const JOB_LOW_STAMINA_THRESHOLD = 30;
+export const JOB_LOW_STAMINA_MULT = 0.5;
+
+export interface JobSettleYield {
+  mp: number;
+  food: number;
+  approval: number;
+  order: number;
+  renown: number;
+  fear: number;
+  lust: number;
+  affVesper: number;
+  stars: 1 | 2 | 3;
+  lowStamina: boolean;
+  hired: boolean;
+}
+
+const EMPTY_JOB_YIELD: JobSettleYield = {
+  mp: 0,
+  food: 0,
+  approval: 0,
+  order: 0,
+  renown: 0,
+  fear: 0,
+  lust: 0,
+  affVesper: 0,
+  stars: 2,
+  lowStamina: false,
+  hired: false,
+};
+
+/**
+ * Ticket 23: single source of truth for prisoner job output.
+ * Both getJobYieldPreview (UI) and the M.Settle ledger (estate.ts) call this,
+ * so the ledger can never drift from what the prison UI promises.
+ */
+export function getJobSettleYield(
   state: GameState,
   p: Prisoner,
   jobKey: string
-): { mp: number; stats: string[]; summary: string } {
+): JobSettleYield {
   const job = PRISON_JOB_MAP[jobKey];
-  if (!job) return { mp: 0, stats: [], summary: '' };
+  if (!job) return { ...EMPTY_JOB_YIELD };
 
   const stars = getJobAptitudeStars(p, jobKey);
   const aptMult = APTITUDE_MULT[stars];
-  const hiredMult = p.converted === 'hired' ? 2 : 1;
+  const hired = p.converted === 'hired';
+  const hiredMult = hired ? 2 : 1;
+  const lowStamina = p.stamina < JOB_LOW_STAMINA_THRESHOLD;
+  const stamMult = lowStamina ? JOB_LOW_STAMINA_MULT : 1;
 
   const baseMp =
     (job.outputs.mp ?? 0) +
@@ -1079,30 +1123,50 @@ export function getJobYieldPreview(
     talentBonus -= 0.5;
   }
 
-  const mp = Math.max(0, Math.round(baseMp * aptMult * hiredMult * (1 + talentBonus)));
-  const stats: string[] = [];
-  const scaleStat = (n?: number) =>
-    n ? Math.round(n * aptMult * hiredMult) : 0;
-
-  const food = scaleStat(job.outputs.food);
-  const approval = scaleStat(job.outputs.approval);
-  const order = scaleStat(job.outputs.order);
-  const renown = scaleStat(job.outputs.renown);
-  const fear = scaleStat(job.outputs.fear);
-  const lust = scaleStat(job.outputs.lust);
-
-  if (mp > 0) stats.push(`+${mp} MP`);
-  if (food) stats.push(`Food ${food >= 0 ? `+${food}` : food}`);
-  if (approval) stats.push(`App ${approval >= 0 ? `+${approval}` : approval}`);
-  if (order) stats.push(`Order ${order >= 0 ? `+${order}` : order}`);
-  if (renown) stats.push(`Renown ${renown >= 0 ? `+${renown}` : renown}`);
-  if (fear) stats.push(`Fear +${fear}`);
-  if (lust) stats.push(`Lust +${lust}`);
-  if (job.outputs.affVesper) stats.push(`Vesper Aff +${job.outputs.affVesper * hiredMult}`);
-  if (p.converted === 'hired') stats.push('Salary -5 MP');
+  const scale = (n: number) => Math.round(n * aptMult * hiredMult * stamMult);
 
   return {
-    mp,
+    mp: Math.max(
+      0,
+      Math.round(baseMp * aptMult * hiredMult * (1 + talentBonus) * stamMult)
+    ),
+    food: scale(job.outputs.food ?? 0),
+    approval: scale(job.outputs.approval ?? 0),
+    order: scale(job.outputs.order ?? 0),
+    renown: scale(job.outputs.renown ?? 0),
+    fear: scale(job.outputs.fear ?? 0),
+    lust: scale(job.outputs.lust ?? 0),
+    affVesper: scale(job.outputs.affVesper ?? 0),
+    stars,
+    lowStamina,
+    hired,
+  };
+}
+
+export function getJobYieldPreview(
+  state: GameState,
+  p: Prisoner,
+  jobKey: string
+): { mp: number; stats: string[]; summary: string } {
+  const job = PRISON_JOB_MAP[jobKey];
+  if (!job) return { mp: 0, stats: [], summary: '' };
+
+  const y = getJobSettleYield(state, p, jobKey);
+  const stats: string[] = [];
+
+  if (y.mp > 0) stats.push(`+${y.mp} MP`);
+  if (y.food) stats.push(`Food ${y.food >= 0 ? `+${y.food}` : y.food}`);
+  if (y.approval) stats.push(`App ${y.approval >= 0 ? `+${y.approval}` : y.approval}`);
+  if (y.order) stats.push(`Order ${y.order >= 0 ? `+${y.order}` : y.order}`);
+  if (y.renown) stats.push(`Renown ${y.renown >= 0 ? `+${y.renown}` : y.renown}`);
+  if (y.fear) stats.push(`Fear +${y.fear}`);
+  if (y.lust) stats.push(`Lust +${y.lust}`);
+  if (job.outputs.affVesper) stats.push(`Vesper Aff +${y.affVesper}`);
+  if (y.hired) stats.push('Salary -5 MP');
+  if (y.lowStamina) stats.push('Exhausted (1/2 output)');
+
+  return {
+    mp: y.mp,
     stats,
     summary: stats.length > 0 ? stats.join(' · ') : job.desc,
   };

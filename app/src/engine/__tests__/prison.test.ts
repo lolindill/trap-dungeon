@@ -26,6 +26,7 @@ import {
   getAuctionTerms,
   getInterrogateChance,
   getJobAptitudeStars,
+  getJobSettleYield,
   getJobYieldPreview,
   getPrisonerPronouns,
   getSaleRiskOdds,
@@ -33,6 +34,7 @@ import {
   sellPrisoner,
   unassignPrisonerJob,
 } from '../prison';
+import { computeManagementSettle } from '../estate';
 import { createInitialGameState } from '../saveLoad';
 
 afterEach(() => {
@@ -597,5 +599,34 @@ describe('Auction Repricing (Ticket 20)', () => {
     // pdress also bumps Shame +4, crossing the first Shame mark threshold
     // (Marks x1.08), so ransom = 49 x1.10 Corr x1.08 Marks x1.20 Dressed x1.05 Market
     expect(getAuctionTerms(pact.state, pact.state.prisoners[0]).ransom).toBe(73);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 23: preview / settle parity — the M.Settle ledger calls the same
+// shared math (getJobSettleYield) that getJobYieldPreview shows the player.
+// ---------------------------------------------------------------------------
+describe('Ticket 23: preview/settle parity', () => {
+  it('M.Settle ledger pays every job exactly what the prison UI preview promises', () => {
+    for (const job of PRISON_JOBS) {
+      const worker = makeCaptive({ job: job.key });
+      const state = makeDayState([worker]);
+      const ledger = computeManagementSettle(state);
+      const y = getJobSettleYield(state, worker, job.key);
+      const preview = getJobYieldPreview(state, worker, job.key);
+      expect(ledger.jobMp).toBe(y.mp);
+      expect(preview.mp).toBe(y.mp);
+      expect(ledger.jobFood).toBe(y.food);
+      expect(ledger.jobFear).toBe(y.fear);
+      expect(ledger.jobLust).toBe(y.lust);
+
+      // Exhausted workers (stamina < 30) are halved on BOTH sides of the
+      // contract: preview shown == MP actually paid.
+      const tired = makeCaptive({ job: job.key, stamina: 15 });
+      const tiredState = makeDayState([tired]);
+      expect(computeManagementSettle(tiredState).jobMp).toBe(
+        getJobYieldPreview(tiredState, tired, job.key).mp
+      );
+    }
   });
 });
