@@ -125,6 +125,22 @@
 .dk-mark-pill.terror { color: var(--r); border-color: rgba(255, 98, 98, 0.5); }
 .dk-mark-pill.shame { color: var(--y); border-color: rgba(255, 228, 94, 0.5); }
 
+/* Ticket 27 (corruption seam II): corr tier chips — CORR_TIERS labels only
+   (judge ruling: tier words, never new raw ints). Same pill/badge geometry
+   as the marks badges; color escalates with the tier, Hollowed drains to
+   hollow white. Works on both .dk-mark-pill (roster row) and .dk-badge
+   (detail card). */
+.dk-mark-pill.corr-resistant,
+.dk-badge.corr-resistant { color: var(--n); border-color: rgba(103, 238, 119, 0.5); }
+.dk-mark-pill.corr-wavering,
+.dk-badge.corr-wavering { color: var(--y); border-color: rgba(255, 228, 94, 0.5); }
+.dk-mark-pill.corr-complicit,
+.dk-badge.corr-complicit { color: var(--m); border-color: rgba(244, 106, 232, 0.5); }
+.dk-mark-pill.corr-devoted,
+.dk-badge.corr-devoted { color: var(--r); border-color: rgba(255, 98, 98, 0.5); }
+.dk-mark-pill.corr-hollowed,
+.dk-badge.corr-hollowed { color: var(--w); border-color: rgba(243, 245, 250, 0.5); }
+
 /* Right Detail Card */
 .dk-prison-detail {
   border: 1px solid var(--d);

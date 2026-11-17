@@ -550,6 +550,25 @@ export const TRAP_WEAR = { PER_BEAT: 10, PER_BEAT_KINK: 15, SOFT_GRADE: 60, SPEN
 // threshold. RATCHET_FLOOR mirrors TIER for consumers.
 export const TRAP_ATTUNEMENT = { PER_STAGGER: 15, PER_CAPTURE: 15, TIER: 50, ASCENDANT: 85, RATCHET_FLOOR: 50 };
 
+// Ticket 27 (corruption seam II): the named corr tier lattice — single source
+// of truth. Judge ruling: tier WORDS go to the LLM prompts and the UI, never
+// raw corr ints beyond what already exists today. Boundaries are exact
+// (24/25, 49/50, 69/70, 84/85); this ticket ships LABELS only — tier
+// mechanics (pacts/conversions) wire in via ticket 31.
+export const CORR_TIERS: { key: string; label: string; min: number; max: number }[] = [
+  { key: 'resistant', label: 'Resistant', min: 0, max: 24 },
+  { key: 'wavering', label: 'Wavering', min: 25, max: 49 },
+  { key: 'complicit', label: 'Complicit', min: 50, max: 69 },
+  { key: 'devoted', label: 'Devoted', min: 70, max: 84 },
+  { key: 'hollowed', label: 'Hollowed', min: 85, max: 100 },
+];
+
+// Ticket 27: TiTS-style ratchet floor (judge: ADOPT) — once a prisoner
+// reaches Hollowed the nightly corr drift must never pull them back below
+// 85. Landed as a constant now per spec item 3; ticket 28 (drift clamp
+// site) and ticket 31 (single ratchet helper) enforce it.
+export const CORR_RATCHET_FLOOR = 85;
+
 export const OPENING_TEXT = `Blue mana pulses through a seven-floor labyrinth. Deep below, a Dungeon Core beats like a slow heart, waiting for its new master.
 
 Above ground, word of a newly awakened labyrinth is already spreading toward the Hero Guild. Beside the Control Room's scrying crystals, Lilim flips open a fresh ledger with a wicked grin while Vesper adjusts her cuffs and checks the Core's mana reserves.

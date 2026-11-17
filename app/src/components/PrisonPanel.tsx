@@ -46,6 +46,7 @@ import {
   unassignPrisonerJob,
   type PrisonActionResult,
 } from '../engine/prison';
+import { corrTier } from '../engine/tiers';
 import type { GameState, Prisoner } from '../types/game';
 import { GradeBadge } from './GradeBadge';
 import '../styles/prison.css';
@@ -176,6 +177,9 @@ export function PrisonPanel({
               const stamPct = Math.round(
                 (p.stamina / Math.max(1, p.staminaMax)) * 100
               );
+              // Corruption seam (ticket 27): corr tier WORD chip — labels
+              // only, no new raw ints on the roster row.
+              const tier = corrTier(p.corr);
               return (
                 <button
                   key={p.pid}
@@ -202,6 +206,12 @@ export function PrisonPanel({
                     />
                   </div>
                   <div className="dk-mark-mini-row">
+                    <span
+                      className={`dk-mark-pill corr-${tier.key}`}
+                      title={`Corruption: ${tier.label}`}
+                    >
+                      {tier.label}
+                    </span>
                     {p.marks.obey > 0 && (
                       <span className="dk-mark-pill obey">O{p.marks.obey}</span>
                     )}
@@ -320,6 +330,13 @@ export function PrisonPanel({
 
               {/* Marks, Talents, Flags */}
               <div className="dk-wrap" style={{ marginBottom: 8 }}>
+                {/* Corruption seam (ticket 27): corr tier WORD chip (labels only). */}
+                <span
+                  className={`dk-badge corr-${corrTier(activeCaptive.corr).key}`}
+                  title="Corruption tier"
+                >
+                  Corr: {corrTier(activeCaptive.corr).label}
+                </span>
                 <span className="dk-badge n">Obey ★{activeCaptive.marks.obey}</span>
                 <span className="dk-badge m">Pleas ★{activeCaptive.marks.pleasure}</span>
                 <span className="dk-badge r">Terr ★{activeCaptive.marks.terror}</span>

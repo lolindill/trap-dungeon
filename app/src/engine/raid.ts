@@ -1058,7 +1058,7 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
         if (h.traits.includes('masochist')) resist -= 20;
         if (h.traits.includes('ascetic')) resist += 10;
         const clampedResist = h.epic ? 100 : clamp(resist, 0, 100);
-        // Corruption seam (ticket 26): matched-kink flag for ticket 27's seed
+        // Corruption seam (ticket 26→27): matched-kink flag for the seed
         // formula — computed LOCALLY at the capture boundary, nothing stored
         // on hero or prisoner. facedSlotTypes is the capture floor's slot
         // types (the capture beat resolved against one of those slots).
@@ -1068,8 +1068,23 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
         const facedSlotTypes = (captureFloor?.slots ?? []).flatMap((s) => s.types);
         const matchedKink =
           KINK_TRAP_MAP[h.kinkKey]?.some((t) => facedSlotTypes.includes(t)) ?? false;
-        void matchedKink; // ticket 27 consumes this (+10 seed bonus)
-        const corr = (h.traits.includes('lewd') ? 20 : 0) + (h.aroused ? 15 : 0);
+        // Corruption seam (ticket 27): debate seed formula replaces the old
+        // 2-boolean seed (lewd?20 + aroused?15). +5 warm-but-bound baseline;
+        // corrFeed pays out ×8 — read HERE, BEFORE the settlement reset below
+        // wipes it (ticket 26 deliberately ordered the reset after this
+        // prisoner build); kink targeting pays lewd +20 / aroused +15 /
+        // matched faced slot +10. Clamped to 45 so even a fully-pressured
+        // kink-matched capture lands at the Wavering/Complicit border —
+        // continuity, never a free win.
+        const corr = clamp(
+          5 +
+            (h.traits.includes('lewd') ? 20 : 0) +
+            (h.aroused ? 15 : 0) +
+            (h.corrFeed ?? 0) * 8 +
+            (matchedKink ? 10 : 0),
+          0,
+          45
+        );
         const staminaMax = h.traits.includes('tough') ? 120 : 100;
         const baseStamina = h.cond === 'severe' ? 60 : h.cond === 'injured' ? 80 : 100;
         newPrisoners.push({

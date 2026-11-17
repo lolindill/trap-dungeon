@@ -31,6 +31,7 @@ import type {
 } from '../types/game';
 import { appendDayLogLine, getOfficerStageForAff, isDayPhase, spendDayAp } from './dayLoop';
 import { clamp, randInt } from './rng';
+import { corrTier } from './tiers';
 
 export interface Pronouns {
   subject: 'he' | 'she';
@@ -2242,7 +2243,10 @@ export function buildPrisonRosterPromptContext(
         ]
           .filter(Boolean)
           .join('/');
-        return `${p.name} (${p.grade} ${p.gender} [${pr.subject}/${pr.object}], ${getPrisonerTitle(p)}, Res ${p.resist}%, Corr ${p.corr}%, Marks ${formatMarkCompact(p.marks)}${roleTag}${flags ? `, ${flags}` : ''})`;
+        // Corruption seam (ticket 27): the corr tier WORD rides the existing
+        // Res/Corr/Marks line — judge ruling: tier words to the LLM, never
+        // raw corr ints beyond what this line already carries.
+        return `${p.name} (${p.grade} ${p.gender} [${pr.subject}/${pr.object}], ${getPrisonerTitle(p)}, Res ${p.resist}%, Corr ${p.corr}% (${corrTier(p.corr).label}), Marks ${formatMarkCompact(p.marks)}${roleTag}${flags ? `, ${flags}` : ''})`;
       })
       .join('; ');
     const overflow = active.length > shown.length ? ` (and ${active.length - shown.length} earlier)` : '';
