@@ -24,7 +24,13 @@ export type RealmConfigMode = 'on' | 'half' | 'off';
 export type TownPolicy = 'low' | 'normal' | 'high';
 export type PrisonerConversion = 'guard' | 'servant' | 'pet' | 'dancer' | 'hired';
 export type OfficerKey = 'vesper' | 'lilim' | 'eleonora';
-export type EndingKey = 'romance' | 'romance_dowry' | 'liberation' | 'prosperity' | 'bankrupt';
+export type EndingKey =
+  | 'romance'
+  | 'romance_dowry'
+  | 'liberation'
+  | 'prosperity'
+  | 'bankrupt'
+  | 'dominion';
 export type GameOverKey = 'ruin' | 'famine' | 'riot' | 'core' | 'bankrupt';
 export type RelicKey = 'shield' | 'chalice' | 'crown' | 'lens';
 export type RankTrialKey = 'wipe3' | 'jobs5' | 'annex1' | 'epic';

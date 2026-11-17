@@ -509,6 +509,9 @@ export const SCENE_ASSET_ALIASES: Record<string, string> = {
   // Ending <-> Game Over / Event aliases (Lua X.ART_ALT)
   dk_int_e10: 'dk_end_dowry',
   dk_end_bankrupt: 'dk_go_bankrupt',
+  // Ticket 32 dominion-tier variant: no bundled CG — falls back to the grand
+  // domain art until a dedicated dk_end_dominion asset is bundled.
+  dk_end_dominion: 'dk_end_prosperity',
 };
 
 export function assetUrl(

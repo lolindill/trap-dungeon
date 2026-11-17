@@ -435,6 +435,8 @@ const ENDING_BEATS: Record<EndingKey | `go_${GameOverKey}`, string> = {
     'Lostbell has reached Town Lv. 5 — a thriving capital built above an undefeated labyrinth. Show streets, merchants, shrine, and citizens flourishing under your rule while Vesper, Lilim, and Eleonora celebrate at a grand festival. Goldreich debt remains active as Endless Rank Trials unlock.',
   bankrupt:
     'Three late strikes reached: House Goldreich seizes Lostbell. Show bailiffs sealing the gates, Eleonora torn between triumph and guilt as overseer, Vesper and Lilim fuming, and Lostbell bound under Goldreich ledger foreclosure.',
+  dominion:
+    'The corruption economy has reached its terminus: attunement saturates every trap and the most devoted captives resonate at the ceiling. Show corridors breathing on their own, devoted prisoners tending the walls, Vesper and Lilim awed and uneasy, and the Master fused with a dungeon that has hollowed itself into a living dominion. Endless Rank Trials continue.',
   go_ruin:
     'After Wave collapse, the last townsfolk died or fled; the domain above is an empty ruin. Show silent streets, Vesper closing empty ledgers, Lilim falling quiet, and the Master alone beside the fading Core.',
   go_famine:

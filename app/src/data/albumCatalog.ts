@@ -155,6 +155,10 @@ const SCENE_TITLE_OVERRIDES: Record<string, [string, string]> = {
   dk_go_bankrupt: ['Game Over: Bankrupt', '3 Late Strikes on Goldreich debt'],
   dk_rank_up: ['Demon Lord Rank Up', 'Cleared an Endless Rank Trial'],
   // Aliases
+  dk_end_dominion: [
+    'Hollowed Dominion Ending (Alias)',
+    'Alias -> dk_end_prosperity · Trap Attunement >= 300 & 5 Hollowed prisoners',
+  ],
   dk_fl_fighter: ['Captive Fighter Floor (Alias)', 'Alias -> dk_fl_display'],
   dk_act_granary: ['Buy Grain Action (Alias)', 'Alias -> dk_fac_farmland'],
   dk_fac_torture: ['Torture Chamber (Alias)', 'Alias -> dk_fac_annex'],
@@ -307,6 +311,7 @@ function buildCatalog(): AlbumEntry[] {
   // 2. Explicit Alias / Expansion fallback keys so every Lua/data key is discoverable
   const explicitAliasKeys = [
     'dk_stage_e3',
+    'dk_end_dominion',
     'dk_fl_fighter',
     'dk_act_granary',
     'dk_fac_torture',

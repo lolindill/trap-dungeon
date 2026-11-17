@@ -104,6 +104,24 @@ export const ENDING_DEFS: Record<EndingKey, EndingDef> = {
       'Three consecutive missed debt deadlines exhaust Eleonora’s patience and House Goldreich’s mercy. Imperial bailiffs seal the dungeon gates and foreclose Lostbell.',
     rewardNote: 'Triggers Bankrupt Game Over — rewindable via Wave-Start autosave.',
   },
+  // Ticket 32 dominion-tier variant (Agent A's divergence, attunement flavor):
+  // unlocked purely by the corruption economy — total trap attunement >= 300
+  // AND >= 5 prisoners at corr 100 — alongside (never replacing) the five
+  // canonical endings. Does not clear Goldreich debt: the ledger is moot once
+  // the dungeon itself has hollowed, but the contract stays formally open.
+  dominion: {
+    key: 'dominion',
+    title: 'Hollowed Dominion',
+    koTitle: '공동 지배 — 속이 빈 미궁',
+    subtitle: 'Total Trap Attunement ≥ 300 · 5 Prisoners at corr 100',
+    artKey: 'dk_end_dominion',
+    clearsDebt: false,
+    isGameOver: false,
+    summary:
+      'Every corridor hums with a hunger that no longer needs a keeper. Between the worn stone and the devoted captives who tend it, the dungeon itself has hollowed — Lostbell no longer houses a labyrinth; it has become one, with you as its resonant core.',
+    rewardNote:
+      'Dominion-tier variant unlocked · Debt stays formally open · Endless Rank Trials unlocked.',
+  },
 };
 
 export const GAMEOVER_DEFS: Record<GameOverKey, GameOverDef> = {
@@ -190,10 +208,101 @@ export const RANK_TRIALS: RankTrialDef[] = [
   },
 ];
 
+// --- Ticket 32: corruption-ledger readers (endgame consumers) ----------------
+
+/** First-pass dominion gate thresholds (balance pass owns final numbers). */
+export const DOMINION_GATE = {
+  TOTAL_ATTUNEMENT: 300,
+  HOLLOWED_PRISONERS: 5,
+} as const;
+
+/**
+ * First-pass Endless rank scoring weights (balance pass owns final numbers),
+ * mirroring prison.ts's `mul(1 + p.corr / 200, 'Corr')` ransom precedent:
+ * rank reward MP × `(1 + avgPrisonerCorr/200 + totalTrapAttunement/400)`.
+ */
+export const RANK_CORR_WEIGHTS = {
+  AVG_CORR: 1 / 200,
+  TOTAL_ATTUNEMENT: 1 / 400,
+} as const;
+
+/** Avg corr bands for the liberation/romance divergence tint (text-level only). */
+export const ENDING_TINT_BANDS = { HIGH: 70, LOW: 30 } as const;
+
+export const ENDING_TINT_LINES = {
+  HIGH:
+    'Divergence — the Hollowed Chorus: every captive left in Lostbell hums the dungeon’s tune, and the ledger closes over prisoners who signed their settlement in Contentment.',
+  LOW:
+    'Divergence — the Unbroken Chorus: the captives who walk out of Lostbell do so with their wills intact, and the labyrinth’s song fades to a whisper behind them.',
+} as const;
+
+/** Total persistent attunement across every trap slot on every floor. */
+export function getTotalTrapAttunement(state: Pick<GameState, 'floors'>): number {
+  return state.floors.reduce(
+    (sum, floor) => sum + floor.slots.reduce((s, slot) => s + (slot.attunement ?? 0), 0),
+    0,
+  );
+}
+
+/** Prisoners sitting at the corr ceiling (applyCorrDelta clamps at 100). */
+export function getHollowedPrisonerCount(state: Pick<GameState, 'prisoners'>): number {
+  return state.prisoners.filter((p) => p.corr >= 100).length;
+}
+
+/** Mean prisoner corr; 0 when the dungeon holds no prisoners (tint-free). */
+export function getAvgPrisonerCorr(state: Pick<GameState, 'prisoners'>): number {
+  if (state.prisoners.length === 0) return 0;
+  return state.prisoners.reduce((sum, p) => sum + p.corr, 0) / state.prisoners.length;
+}
+
+/**
+ * Ticket 32 liberation/romance tint: the divergence line is tinted by the
+ * dungeon's corruption character — avg prisoner corr >= 70 reads as a hollowed
+ * (devoted-chorus) liberation, <= 30 as an unbroken one, in between stays
+ * untinted. Text-level only; no new ending objects. Endings without prisoners
+ * are unaffected.
+ */
+export function getEndingCorrTintLine(state: Pick<GameState, 'prisoners'>): string | null {
+  if (state.prisoners.length === 0) return null;
+  const avg = getAvgPrisonerCorr(state);
+  if (avg >= ENDING_TINT_BANDS.HIGH) return ENDING_TINT_LINES.HIGH;
+  if (avg <= ENDING_TINT_BANDS.LOW) return ENDING_TINT_LINES.LOW;
+  return null;
+}
+
+/** Corruption multiplier applied to Endless rank-trial reward MP. */
+export function getRankCorrMultiplier(state: GameState): number {
+  return (
+    1 +
+    getAvgPrisonerCorr(state) * RANK_CORR_WEIGHTS.AVG_CORR +
+    getTotalTrapAttunement(state) * RANK_CORR_WEIGHTS.TOTAL_ATTUNEMENT
+  );
+}
+
+/**
+ * Ticket 32 dominion gate (Agent A's divergence, attunement flavor): total
+ * trap attunement >= 300 AND >= 5 prisoners at corr == 100 unlock the
+ * dominion-tier ending variant alongside the five canonical endings. Pure and
+ * idempotent — evaluates at every settlement via evaluateRankTrials.
+ */
+export function checkDominionEnding(state: GameState): GameState {
+  // `!== undefined` (not truthiness): unlock stamps carry the wave number,
+  // and wave 0 states must still read as already-unlocked.
+  if (state.endings.unlocked.dominion !== undefined) return state;
+  if (getTotalTrapAttunement(state) < DOMINION_GATE.TOTAL_ATTUNEMENT) return state;
+  if (getHollowedPrisonerCount(state) < DOMINION_GATE.HOLLOWED_PRISONERS) return state;
+  return triggerNonBankruptEnding(state, 'dominion');
+}
+
 export function hasAnyNonBankruptEnding(state: GameState): boolean {
   const u = state.endings.unlocked;
   return Boolean(
-    u.romance || u.romance_dowry || u.liberation || u.prosperity || state.endings.endless,
+    u.romance ||
+      u.romance_dowry ||
+      u.liberation ||
+      u.prosperity ||
+      u.dominion ||
+      state.endings.endless,
   );
 }
 
@@ -289,10 +398,14 @@ export function evaluateRankTrials(
   state: GameState,
   raidOutcome?: RaidOutcome,
 ): GameState {
-  if (!hasAnyNonBankruptEnding(state) && !state.endings.endless) {
-    return state;
+  // Ticket 32: the dominion gate is evaluated here so the corruption economy
+  // can unlock its ending on every settlement (raid + management) without a
+  // canonical ending having landed first.
+  let working = checkDominionEnding(state);
+  if (!hasAnyNonBankruptEnding(working) && !working.endings.endless) {
+    return working;
   }
-  let working = ensureRankTrialsInitialized(state);
+  working = ensureRankTrialsInitialized(working);
   let rt: RankTrialsState = { ...working.rankTrials };
 
   if (raidOutcome) {
@@ -304,7 +417,14 @@ export function evaluateRankTrials(
 
   if (rt.currentTrial && progress >= rt.target) {
     const newRank = rt.rank + 1;
-    const rewardMp = 150 + newRank * 50;
+    // Ticket 32 Endless scoring: rank reward MP gains a corruption multiplier
+    // mirroring prison.ts's `mul(1 + p.corr / 200, 'Corr')` precedent —
+    // × (1 + avgPrisonerCorr/200 + totalTrapAttunement/400). First-pass
+    // weights (RANK_CORR_WEIGHTS); the balance pass owns final numbers.
+    const corrMult = getRankCorrMultiplier(working);
+    const corrNote =
+      Math.abs(corrMult - 1) > 0.0001 ? ` · Corr ×${corrMult.toFixed(2)}` : '';
+    const rewardMp = Math.round((150 + newRank * 50) * corrMult);
     const titleStr = `Demon Rank ${newRank}`;
     const nextCursor = ((rt.trialCursor ?? rt.rank) + 1) % RANK_TRIALS.length;
     const nextDef = selectTrialAtCursor(working, nextCursor);
@@ -339,10 +459,10 @@ export function evaluateRankTrials(
       chronicle: appendSystemChronicle(
         working,
         `Rank Trial Cleared · ${titleStr}`,
-        `Passed "${RANK_TRIALS.find((t) => t.key === rt.currentTrial)?.title ?? rt.currentTrial}"! Earned +${rewardMp} MP & +1 Fame. Next Trial: ${nextDef.title} (by Wave ${updatedRt.nextCheckWave}).`,
+        `Passed "${RANK_TRIALS.find((t) => t.key === rt.currentTrial)?.title ?? rt.currentTrial}"! Earned +${rewardMp} MP & +1 Fame${corrNote}. Next Trial: ${nextDef.title} (by Wave ${updatedRt.nextCheckWave}).`,
         'dk_rank_up',
       ),
-      flash: `Rank Trial Cleared! Ascended to ${titleStr} (+${rewardMp} MP, +1 Fame).`,
+      flash: `Rank Trial Cleared! Ascended to ${titleStr} (+${rewardMp} MP, +1 Fame${corrNote}).`,
     };
   }
 
@@ -377,6 +497,7 @@ export function evaluateRankTrials(
 export function triggerNonBankruptEnding(
   state: GameState,
   endingKey: Exclude<EndingKey, 'bankrupt'>,
+  options: { tintLine?: string | null } = {},
 ): GameState {
   const def = ENDING_DEFS[endingKey];
   const alreadyUnlocked = Boolean(state.endings.unlocked[endingKey]);
@@ -409,12 +530,17 @@ export function triggerNonBankruptEnding(
   next = ensureRankTrialsInitialized(next);
 
   if (!alreadyUnlocked) {
+    // Ticket 32: an optional tint line (liberation/romance divergence) is
+    // appended to the ending chronicle line — text-level only.
+    const summaryText = options.tintLine
+      ? `${def.summary}\n\n${options.tintLine}`
+      : def.summary;
     next = {
       ...next,
       chronicle: appendSystemChronicle(
         next,
         `Ending Unlocked · ${def.title}`,
-        def.summary,
+        summaryText,
         def.artKey,
       ),
     };
@@ -433,8 +559,12 @@ export function checkDebtPayoffEnding(state: GameState): GameState {
   if (state.debt.ended || state.debt.amount + state.debt.extraLoan > 0) {
     return state;
   }
+  // Ticket 32 divergence site: the romance/liberation choice is tinted by the
+  // dungeon's corruption character (avg prisoner corr) — text-level only.
   const endingKey: EndingKey = state.officers.eleonora.aff >= 90 ? 'romance' : 'liberation';
-  return triggerNonBankruptEnding(state, endingKey);
+  return triggerNonBankruptEnding(state, endingKey, {
+    tintLine: getEndingCorrTintLine(state),
+  });
 }
 
 export function triggerDowryEnding(state: GameState): GameState {
@@ -660,7 +790,13 @@ export function formatDeterministicEndingSummary(
 ): string {
   if (kind === 'ending') {
     const def = ENDING_DEFS[key as EndingKey];
-    return `${def.title} (${def.koTitle}) — Wave ${state.wave}.\n\n${def.summary}\n\n${def.rewardNote} Eleonora Affinity: ${state.officers.eleonora.aff}/100 · Remaining Debt: ${state.debt.amount + state.debt.extraLoan} MP · Town Lv.${state.town.lv}.`;
+    // Ticket 32: the liberation/romance divergence line is tinted by avg
+    // prisoner corr (>= 70 hollowed / <= 30 unbroken); every other ending —
+    // and any dungeon without prisoners — stays untinted. Text-level only.
+    const tintLine =
+      key === 'liberation' || key === 'romance' ? getEndingCorrTintLine(state) : null;
+    const tintText = tintLine ? `\n\n${tintLine}` : '';
+    return `${def.title} (${def.koTitle}) — Wave ${state.wave}.\n\n${def.summary}${tintText}\n\n${def.rewardNote} Eleonora Affinity: ${state.officers.eleonora.aff}/100 · Remaining Debt: ${state.debt.amount + state.debt.extraLoan} MP · Town Lv.${state.town.lv}.`;
   }
   const def = GAMEOVER_DEFS[key as GameOverKey];
   return `${def.title} (${def.koTitle}) — Fell on Wave ${state.wave}.\n\n${def.cause}\n\nRecovery Tip: ${def.hint}`;

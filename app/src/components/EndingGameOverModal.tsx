@@ -5,6 +5,9 @@ import {
   ENDING_DEFS,
   formatDeterministicEndingSummary,
   GAMEOVER_DEFS,
+  getAvgPrisonerCorr,
+  getHollowedPrisonerCount,
+  getTotalTrapAttunement,
   RANK_TRIALS,
 } from '../engine/endings';
 import { loadSaveSlots, SAVE_SLOT_IDS } from '../engine/saveLoad';
@@ -205,8 +208,21 @@ export function EndingGameOverModal({
                     <span className="dk-chip">🏰 Town Lv.{state.town.lv}</span>
                     <span className="dk-chip">💖 Eleonora Aff {state.officers.eleonora.aff}</span>
                     <span className="dk-chip">
-                      👑 Unlocked Endings ({unlockedEndingKeys.length}/5):{' '}
-                      {unlockedEndingKeys.join(', ') || activeEndKey}
+                      👑 Unlocked Endings ({unlockedEndingKeys.length}/
+                      {Object.keys(ENDING_DEFS).length}): {unlockedEndingKeys.join(', ') || activeEndKey}
+                    </span>
+                  </div>
+
+                  {/* Ticket 32 corruption-ledger summary (totals computable from state) */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 11 }}>
+                    <span className="dk-chip">
+                      🌀 Trap Attunement {getTotalTrapAttunement(state)} (Dominion gate ≥ 300)
+                    </span>
+                    <span className="dk-chip">
+                      😈 Avg Prisoner Corr {Math.round(getAvgPrisonerCorr(state))}
+                    </span>
+                    <span className="dk-chip">
+                      ⛓ Hollowed ×{getHollowedPrisonerCount(state)} (corr 100)
                     </span>
                   </div>
                 </>
