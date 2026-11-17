@@ -10,7 +10,8 @@ app/tsconfig.tsbuildinfo
 .DS_Store
 Thumbs.db
 
-# Raw CharX Binary & Reference Dump (kept local only)
+# Raw CharX Binary & Reference Dump (kept local only; lorebook prompts are tracked)
 CharX Embeded Jpeg.jpeg
 Ero Trap Dungeon Maker_all_chats_*.json
-_reference/
+_reference/*
+!_reference/lorebook/
