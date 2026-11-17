@@ -1,4 +1,4 @@
-import { CFG } from '../data/constants';
+import { CFG, TRAP_ATTUNEMENT, TRAP_GRADE_BELOW, TRAP_WEAR } from '../data/constants';
 import {
   FLOOR_LINK_RULES,
   MONSTER_CFG,
@@ -20,6 +20,7 @@ import type {
   MonsterInstance,
   Prisoner,
   RoomBlueprintSlot,
+  SlotGrade,
   SynergyGrade,
   TrapBlueprint,
   TrapGrade,
@@ -263,15 +264,46 @@ export function getFloorLinks(state: GameState): FloorLinkInstance[] {
   return out;
 }
 
+/**
+ * Ticket 30 trap-lifecycle read path: the grade a slot defends RIGHT NOW.
+ *   - spent / disarmed slots are out of the fight → encoded as '?' (every
+ *     TRAP_BONUS consumer already treats '?' as 0);
+ *   - armed slots worn to `wear >= TRAP_WEAR.SOFT_GRADE` defend one grade
+ *     lower (D has no lower grade and holds);
+ *   - unrated slots stay '?' unchanged.
+ * getFloorDC and raid's highTrapIdx / floorTypes consumers read through this.
+ */
+export function effectiveGrade(slot: Pick<TrapSlot, 'grade' | 'status' | 'wear'>): SlotGrade {
+  if (slot.grade === '?') return '?';
+  if (slot.status === 'spent' || slot.status === 'disarmed') return '?';
+  if ((slot.wear ?? 0) >= TRAP_WEAR.SOFT_GRADE) {
+    return TRAP_GRADE_BELOW[slot.grade as TrapGrade] ?? (slot.grade as TrapGrade);
+  }
+  return slot.grade as TrapGrade;
+}
+
 export function getFloorDC(floor: FloorState, state?: GameState): number {
-  const synBonus = floor.slots.length >= 2 && isSynergyGrade(floor.synergy)
+  const activeSlots = floor.slots.filter((s) => effectiveGrade(s) !== '?');
+  const synBonus = activeSlots.length >= 2 && isSynergyGrade(floor.synergy)
     ? CFG.SYNERGY_BONUS[floor.synergy]
     : 0;
   const trapSum = floor.slots.reduce(
-    (sum, s) => sum + (s.grade !== '?' ? CFG.TRAP_BONUS[s.grade] : 0),
+    (sum, s) => {
+      const eg = effectiveGrade(s);
+      return sum + (eg !== '?' ? CFG.TRAP_BONUS[eg] : 0);
+    },
     0
   );
-  const baseDc = CFG.DC_BASE + Math.floor((floor.floor - 1) / 3) + clamp(trapSum + synBonus, 0, CFG.FLOOR_CAP);
+  // Ticket 30: an ASCENDANT-attuned slot is a kink-specialized defense asset —
+  // the whole floor defends +1 while any ACTIVE slot holds that attunement
+  // (spent/disarmed slots keep contributing nothing at all).
+  const ascendantBonus = floor.slots.some(
+    (s) => effectiveGrade(s) !== '?' && (s.attunement ?? 0) >= TRAP_ATTUNEMENT.ASCENDANT
+  )
+    ? 1
+    : 0;
+  const baseDc =
+    CFG.DC_BASE + Math.floor((floor.floor - 1) / 3) + clamp(trapSum + synBonus + ascendantBonus, 0, CFG.FLOOR_CAP);
   if (!state || floor.slots.length === 0) return baseDc;
   const shieldBonus = floor.floor === 1 && state.relics?.owned.includes('shield') ? 1 : 0;
   // Ticket 15 raid-mods seam: external DC modifiers (estate / crises / Lilim perks)

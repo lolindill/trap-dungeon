@@ -1,4 +1,4 @@
-import { CFG } from '../data/constants';
+import { CFG, TRAP_ATTUNEMENT, TRAP_GRADE_BELOW, TRAP_WEAR } from '../data/constants';
 import type { FloorState, GameState } from '../types/game';
 import { getEstateRaidModifiers } from './estate';
 import { resolveExpeditionAftereffects } from './expedition';
@@ -89,14 +89,33 @@ function hasMod(state: GameState, key: string): boolean {
 
 /** Trap-only DC power of a floor, mirroring dungeon.getFloorDC's base formula (no state deps). */
 function floorTrapPower(floor: FloorState): number {
-  const trapSum = floor.slots.reduce(
-    (sum, s) => sum + (s.grade !== '?' ? CFG.TRAP_BONUS[s.grade] : 0),
-    0
-  );
+  // Ticket 30 mirror of dungeon.effectiveGrade — spent/disarmed slots
+  // contribute nothing, worn slots (wear >= SOFT_GRADE) defend one grade
+  // lower, an active ASCENDANT-attuned slot adds +1. Duplicated inline
+  // because the raid-mods seam must never import dungeon.ts.
+  const slotActive = (s: FloorState['slots'][number]): boolean =>
+    s.grade !== '?' && s.status !== 'spent' && s.status !== 'disarmed';
+  const trapSum = floor.slots.reduce((sum, s) => {
+    if (s.grade === '?' || s.status === 'spent' || s.status === 'disarmed') return sum;
+    const softened = (s.wear ?? 0) >= TRAP_WEAR.SOFT_GRADE;
+    const grade = softened ? TRAP_GRADE_BELOW[s.grade] ?? s.grade : s.grade;
+    return sum + CFG.TRAP_BONUS[grade];
+  }, 0);
+  const ascendantBonus = floor.slots.some(
+    (s) => slotActive(s) && (s.attunement ?? 0) >= TRAP_ATTUNEMENT.ASCENDANT
+  )
+    ? 1
+    : 0;
   const syn = floor.synergy;
   const synBonus =
-    floor.slots.length >= 2 && syn !== '?' && syn !== '-' ? CFG.SYNERGY_BONUS[syn] : 0;
-  return CFG.DC_BASE + Math.floor((floor.floor - 1) / 3) + clamp(trapSum + synBonus, 0, CFG.FLOOR_CAP);
+    floor.slots.filter(slotActive).length >= 2 && syn !== '?' && syn !== '-'
+      ? CFG.SYNERGY_BONUS[syn]
+      : 0;
+  return (
+    CFG.DC_BASE +
+    Math.floor((floor.floor - 1) / 3) +
+    clamp(trapSum + synBonus + ascendantBonus, 0, CFG.FLOOR_CAP)
+  );
 }
 
 /** The N lowest-DC occupied (trapped) floors, ties broken by floor number. */

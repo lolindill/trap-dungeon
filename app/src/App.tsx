@@ -64,6 +64,7 @@ import {
   finishBuildPhase,
   finishResultPhase,
   pickPhaseBanner,
+  prepIntelDisarm,
   startInvasionPhase,
 } from './engine/workflow';
 import { callLlm } from './llm/client';
@@ -334,6 +335,10 @@ export default function App() {
 
   const handleBackToBuild = () => {
     setGameState((prev) => cancelPrepBackToBuild(prev));
+  };
+
+  const handlePrepIntelDisarm = () => {
+    setGameState((prev) => prepIntelDisarm(prev).state);
   };
 
   const handleAdvanceFloor = async (narrateWithAi: boolean) => {
@@ -784,6 +789,7 @@ export default function App() {
                 onRunAiPrep={handleRunAiPrep}
                 onStartRaid={handleStartRaid}
                 onBackToBuild={handleBackToBuild}
+                onPrepIntelDisarm={handlePrepIntelDisarm}
               />
             )}
 

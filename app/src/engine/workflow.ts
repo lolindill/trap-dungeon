@@ -6,9 +6,12 @@ import { enterGameOver } from './endings';
 import {
   buildPrepListPayload,
   finalizePendingGrades,
+  getNextTrapFloor,
   resetPendingGrades,
+  trapGradeIndex,
 } from './dungeon';
 import { generateParty } from './heroes';
+import { isTrapActive } from './raid';
 import { resolveRaidModifiers } from './raidMods';
 import { clamp } from './rng';
 import { withWaveStartSnapshot } from './saveLoad';
@@ -100,6 +103,80 @@ export function finishBuildPhase(state: GameState): GameState {
     lastAudit: [],
     lastRaidDetail: '',
     flash: `Wave ${nextWave} Prep — ${pendingNote}`,
+  };
+}
+
+/**
+ * Ticket 30 prep-intel counterplay (mirrors the in-raid disarmer trait): the
+ * party spends ONE intel slot — a single point off the first hero holding
+ * intel — to mark the highest-grade ACTIVE slot of the scouted floor (the
+ * entry floor, i.e. the first floor with traps) `disarmed` for the coming
+ * raid. Once per prep; the cut persists in the floor slots and the settlement
+ * re-arms it as usual.
+ */
+export function prepIntelDisarm(state: GameState): { ok: boolean; state: GameState } {
+  if (state.mode !== 'prep') {
+    return {
+      ok: false,
+      state: { ...state, flash: 'Prep-intel disarm is only available during Prep.' },
+    };
+  }
+  if (state.prepMeta?.intelDisarmDone) {
+    return {
+      ok: false,
+      state: { ...state, flash: 'Prep intel was already spent on a disarm this wave.' },
+    };
+  }
+  const holder = state.party.find((h) => h.intel > 0);
+  if (!holder) {
+    return {
+      ok: false,
+      state: { ...state, flash: 'No prep intel available — the party carries 0 intel.' },
+    };
+  }
+  const scoutedFloor = getNextTrapFloor(state.floors, 1);
+  const activeIdx: number[] = [];
+  (scoutedFloor?.slots ?? []).forEach((s, idx) => {
+    if (isTrapActive(s)) activeIdx.push(idx);
+  });
+  if (!scoutedFloor || activeIdx.length === 0) {
+    return {
+      ok: false,
+      state: { ...state, flash: 'No scouted floor with an armed trap to cut.' },
+    };
+  }
+  let best = activeIdx[0];
+  for (const idx of activeIdx) {
+    if (trapGradeIndex(scoutedFloor.slots[idx].grade) > trapGradeIndex(scoutedFloor.slots[best].grade)) {
+      best = idx;
+    }
+  }
+
+  const floorIdx = scoutedFloor.floor - 1;
+  const nextFloors = state.floors.map((f, i) =>
+    i === floorIdx
+      ? {
+          ...f,
+          slots: f.slots.map((s, si) =>
+            si === best ? { ...s, status: 'disarmed' as const } : s
+          ),
+        }
+      : f
+  );
+  const nextParty = state.party.map((h) =>
+    h.slot === holder.slot ? { ...h, intel: h.intel - 1 } : h
+  );
+  const cutLabel = scoutedFloor.slots[best].text.split(' — ')[0].slice(0, 24);
+  const holderName = holder.name || `${holder.raceLabel} ${holder.classLabel}`;
+  return {
+    ok: true,
+    state: {
+      ...state,
+      floors: nextFloors,
+      party: nextParty,
+      prepMeta: state.prepMeta ? { ...state.prepMeta, intelDisarmDone: true } : state.prepMeta,
+      flash: `Prep intel spent: the party cut "${cutLabel}" on ${scoutedFloor.floor}F (-1 intel from ${holderName}).`,
+    },
   };
 }
 

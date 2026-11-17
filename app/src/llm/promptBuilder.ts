@@ -12,6 +12,7 @@ import type {
   GameState,
   Hero,
   RaidOutcome,
+  TrapSlot,
 } from '../types/game';
 
 export interface ChatMessage {
@@ -55,6 +56,23 @@ function summarizeHeroLine(h: Hero): string {
   ]
     .filter(Boolean)
     .join('\n  ');
+}
+
+/**
+ * Ticket 30 (tier-word ruling): ONE slot status word, only when non-default —
+ * `worn / spent / disarmed / attuned` (+attunedKink label). Never raw meter
+ * ints. Precedence spent > disarmed > worn > attuned (a spent slot is out of
+ * the fight, whatever attunement it keeps). Clean slots get no word at all.
+ */
+export function slotStatusWord(
+  slot: Pick<TrapSlot, 'status' | 'wear' | 'attunement' | 'attunedKink'>
+): string {
+  if (slot.status === 'spent') return 'spent';
+  if (slot.status === 'disarmed') return 'disarmed';
+  if ((slot.wear ?? 0) > 0) return 'worn';
+  if (slot.attunedKink) return `attuned (${slot.attunedKink})`;
+  if ((slot.attunement ?? 0) > 0) return 'attuned';
+  return '';
 }
 
 export function buildSystemPrompt(state: GameState): string {
@@ -175,7 +193,13 @@ export function buildRaidMessages(
   const floor = state.floors[floorNum - 1];
   const floorDesc = floor && floor.slots.length > 0
     ? floor.slots
-        .map((s, idx) => `#${idx + 1} [${s.grade}${s.types.length ? '/' + s.types.join(',') : ''}] ${s.text}`)
+        .map((s, idx) => {
+          // Ticket 30: ONE tier-word-style status word, only when non-default.
+          const status = slotStatusWord(s);
+          return `#${idx + 1} [${s.grade}${s.types.length ? '/' + s.types.join(',') : ''}]${
+            status ? ` (${status})` : ''
+          } ${s.text}`;
+        })
         .join('\n  ')
     : '(No traps on this floor — Core threshold reached)';
 

@@ -133,6 +133,12 @@ export interface Hero {
   // resolution point (applyWaveSettlement) like the flags above. Absent = 0
   // (legacy-safe).
   corrFeed?: number;
+  // Ticket 30 capture-seed plumbing: index of the slot that absorbed THIS
+  // hero's capture beat (set alongside `caughtBySlot = 'captured'`). Read once
+  // by applyWaveSettlement's seed formula for the faced-slot attunement term,
+  // then cleared at the settlement resolution point. Absent = legacy capture
+  // with no faced-slot attunement term.
+  facedSlotIdx?: number;
   lastRollText: string;
   fallenFloor?: number;
   fallenWave?: number;
@@ -297,6 +303,8 @@ export interface PrepMetadata {
   comboFloors: number[];
   gradedSummary: string;
   heroesReady: boolean;
+  // Ticket 30 prep-intel disarm: one disarm per prep (the intel was spent).
+  intelDisarmDone?: boolean;
 }
 
 export interface SettlementSummary {

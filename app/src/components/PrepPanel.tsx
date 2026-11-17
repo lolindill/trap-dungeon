@@ -11,6 +11,7 @@ interface PrepPanelProps {
   onRunAiPrep: () => void;
   onStartRaid: (allowDefault?: boolean) => void;
   onBackToBuild: () => void;
+  onPrepIntelDisarm: () => void;
 }
 
 export function PrepPanel({
@@ -19,6 +20,7 @@ export function PrepPanel({
   onRunAiPrep,
   onStartRaid,
   onBackToBuild,
+  onPrepIntelDisarm,
 }: PrepPanelProps) {
   const wave = state.prepMeta?.wave ?? state.wave + 1;
   const guildLv = getGuildLevel(state, wave);
@@ -144,6 +146,18 @@ export function PrepPanel({
           onClick={onBackToBuild}
         >
           ← Back to Build
+        </button>
+        {/* Ticket 30: hero-side prep-intel counterplay (mirrors the disarmer trait) */}
+        <button
+          type="button"
+          className="dk-btn sm amber"
+          disabled={isBusy || Boolean(state.prepMeta?.intelDisarmDone) || !state.party.some((h) => h.intel > 0)}
+          title="Spend 1 intel slot: the party cuts the highest-grade armed trap on the entry floor for the coming raid."
+          onClick={onPrepIntelDisarm}
+        >
+          {state.prepMeta?.intelDisarmDone
+            ? 'Prep Intel Spent — Entry-Floor Trap Cut'
+            : 'Prep-Intel Disarm: Cut Best Trap (1 Intel)'}
         </button>
       </div>
 

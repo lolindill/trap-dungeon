@@ -3,10 +3,12 @@ import { clamp } from './rng';
 import { withWaveStartSnapshot } from './saveLoad';
 import type {
   DayLogLine,
+  FloorState,
   GameMode,
   GameState,
   OfficerKey,
   Prisoner,
+  TrapSlot,
 } from '../types/game';
 
 export type NavTabId = 'dungeon' | 'prison' | 'estate' | 'debt' | 'officers';
@@ -436,6 +438,81 @@ export function formatDeterministicDayJournal(
     bulletLines.push(`• Rest & Recovery: Unspent AP converted into +${restMp} MP.`);
   }
   return [`Day ${dayNum} Summary Ledger:`, ...bulletLines].join('\n');
+}
+
+// --- Ticket 30: Day-loop trap maintenance (Repair All) -----------------------
+
+/** First-pass Repair All pricing (balance pass may retune): MP per worn/spent slot. */
+export const REPAIR_MP_PER_SLOT = 3;
+
+/** Slots that need repair: any residual wear, or a spent/cut (disarmed) trap. */
+export function countWornOrSpentSlots(floors: FloorState[]): number {
+  return floors.reduce(
+    (sum, f) =>
+      sum +
+      f.slots.filter(
+        (s) => (s.wear ?? 0) > 0 || s.status === 'spent' || s.status === 'disarmed'
+      ).length,
+    0
+  );
+}
+
+export function getRepairAllCost(state: GameState): { wornSlots: number; mpCost: number } {
+  const wornSlots = countWornOrSpentSlots(state.floors);
+  return { wornSlots, mpCost: wornSlots * REPAIR_MP_PER_SLOT };
+}
+
+/**
+ * Ticket 30 Day-loop lever: Repair All — 1 AP + 3 MP × wornOrSpentSlotCount
+ * sets `wear → 0` and spent/disarmed → armed on every slot. Ticket 29's free
+ * settlement decay (wear − SETTLE_DECAY, re-arm) stays the baseline; this buys
+ * the full restoration mid-day so the next raid faces an unworn dungeon.
+ * No-op (zero cost) when nothing is worn. Clean slots are left byte-identical.
+ */
+export function repairAllTraps(state: GameState): { ok: boolean; state: GameState } {
+  const { wornSlots, mpCost } = getRepairAllCost(state);
+  if (wornSlots === 0) {
+    return {
+      ok: false,
+      state: { ...state, flash: 'No worn or spent traps to repair.' },
+    };
+  }
+  if (state.points < mpCost) {
+    return {
+      ok: false,
+      state: {
+        ...state,
+        flash: `Need ${mpCost} MP to repair ${wornSlots} worn/spent trap(s) (${REPAIR_MP_PER_SLOT} MP each).`,
+      },
+    };
+  }
+  const label = `Repair All traps (${wornSlots} worn/spent · -${mpCost} MP)`;
+  const spent = spendDayAp(state, 'repair_all', { text: label, kind: 'town' });
+  if (!spent.ok) return spent;
+
+  const nextFloors = spent.state.floors.map((f) => {
+    if (f.slots.length === 0) return f;
+    let touched = false;
+    const slots = f.slots.map((s): TrapSlot => {
+      const needs = (s.wear ?? 0) > 0 || s.status === 'spent' || s.status === 'disarmed';
+      if (!needs) return s;
+      touched = true;
+      const next: TrapSlot = { ...s, wear: 0 };
+      if (next.status === 'spent' || next.status === 'disarmed') next.status = 'armed';
+      return next;
+    });
+    return touched ? { ...f, slots } : f;
+  });
+
+  return {
+    ok: true,
+    state: {
+      ...spent.state,
+      floors: nextFloors,
+      points: spent.state.points - mpCost,
+      flash: `${label} (-1 AP). Queued to Day Log.`,
+    },
+  };
 }
 
 export function performQuickTownAction(

@@ -550,6 +550,17 @@ export const TRAP_WEAR = { PER_BEAT: 10, PER_BEAT_KINK: 15, SOFT_GRADE: 60, SPEN
 // threshold. RATCHET_FLOOR mirrors TIER for consumers.
 export const TRAP_ATTUNEMENT = { PER_STAGGER: 15, PER_CAPTURE: 15, TIER: 50, ASCENDANT: 85, RATCHET_FLOOR: 50 };
 
+// Ticket 30 (trap read path): one step DOWN the grade ladder for wear
+// softening (effectiveGrade). D has no lower grade and holds at D.
+export const TRAP_GRADE_BELOW: Partial<Record<TrapGrade, TrapGrade>> = {
+  C: 'D',
+  B: 'C',
+  A: 'B',
+  S: 'A',
+  SS: 'S',
+  SSS: 'SS',
+};
+
 // Ticket 27 (corruption seam II): the named corr tier lattice — single source
 // of truth. Judge ruling: tier WORDS go to the LLM prompts and the UI, never
 // raw corr ints beyond what already exists today. Boundaries are exact

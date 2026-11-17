@@ -21,7 +21,7 @@ import {
   WONDER_DEFS,
   WONDER_ORDER,
 } from '../data/realmData';
-import { calcRestMp, isDayPhase, isDebtDue } from '../engine/dayLoop';
+import { calcRestMp, getRepairAllCost, isDayPhase, isDebtDue, repairAllTraps } from '../engine/dayLoop';
 import {
   applyManagementSettle,
   buildLandmark,
@@ -106,6 +106,8 @@ export function EstatePanel({
   const siegeDef = calcSiegeDefense(state);
 
   const restMp = calcRestMp(state);
+  const repairInfo = getRepairAllCost(state);
+  const repairUsed = Boolean(state.apUsed['repair_all']);
   const popCap = calcPopCap(state);
   const estTax = calcTownTax(state);
   const townTitle = getTownTitle(state);
@@ -391,6 +393,37 @@ export function EstatePanel({
                 );
               })}
             </div>
+          </div>
+
+          {/* Ticket 30: Dungeon Maintenance — Repair All (Day-loop lever) */}
+          <div className="dk-card">
+            <div className="dk-row" style={{ marginBottom: 6 }}>
+              <strong style={{ color: 'var(--c)' }}>DUNGEON MAINTENANCE</strong>
+              <span className="ap-chip">{apBadgeText}</span>
+            </div>
+            <button
+              type="button"
+              className="dk-act-btn"
+              disabled={
+                isBusy ||
+                apLocked ||
+                repairUsed ||
+                repairInfo.wornSlots === 0 ||
+                state.points < repairInfo.mpCost
+              }
+              title="1 AP + 3 MP × worn/spent traps — wear → 0 and spent/cut traps re-armed for the coming raid."
+              onClick={() => onUpdateState((prev) => repairAllTraps(prev).state)}
+            >
+              <div className="dk-row">
+                <span>Repair All Traps</span>
+                <span className="ap-chip">{repairUsed ? 'DONE' : '1 AP'}</span>
+              </div>
+              <small>
+                {repairInfo.wornSlots > 0
+                  ? `${repairInfo.mpCost} MP (${repairInfo.wornSlots} worn/spent × 3) · restores full strength`
+                  : 'All traps clean — nothing to repair'}
+              </small>
+            </button>
           </div>
 
           {/* Realm Situations & Day Countermeasures */}

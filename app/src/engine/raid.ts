@@ -12,6 +12,7 @@ import type {
   TrapSlot,
 } from '../types/game';
 import {
+  effectiveGrade,
   formatFloorRoomText,
   getFloorCombatBonus,
   getFloorCombatSlots,
@@ -97,7 +98,9 @@ function slotLabel(slot: TrapSlot): string {
  * Phase 5 F1: pure faced-slot weights. disarmer → one-hot on the
  * highest-grade ACTIVE slot; kink-matched slots (KINK_TRAP_MAP) → ×2; else
  * uniform. Ticket 29: spent/disarmed slots get weight 0 — they are out of the
- * fight and never faced.
+ * fight and never faced. Ticket 30: a slot attuned to the hero's own kink also
+ * draws ×2 via max(kinkWeight, attunedWeight) — the two bonuses NEVER stack
+ * multiplicatively.
  */
 export function facedSlotWeights(
   hero: Pick<Hero, 'kinkKey' | 'traits'>,
@@ -114,9 +117,12 @@ export function facedSlotWeights(
     }
     return floor.slots.map((_, i) => (i === best ? 1 : 0));
   }
-  return floor.slots.map((s) =>
-    !isTrapActive(s) ? 0 : slotKinkMatched(hero.kinkKey, s.types) ? 2 : 1
-  );
+  return floor.slots.map((s) => {
+    if (!isTrapActive(s)) return 0;
+    const kinkWeight = slotKinkMatched(hero.kinkKey, s.types) ? 2 : 1;
+    const attunedWeight = s.attunedKink === hero.kinkKey ? 2 : 1;
+    return Math.max(kinkWeight, attunedWeight);
+  });
 }
 
 /**
@@ -348,11 +354,16 @@ export function resolveFloorEncounter(
         p !== undefined && p.stamina >= MONSTER_CFG.FSLOT.FIGHTER_MIN_STAMINA
     );
 
+  // Ticket 30: trait/aura reads go through the slot ledger too — spent and
+  // disarmed slots contribute no bonus and their type aura is off, worn slots
+  // read one grade lower (effectiveGrade).
   const highTrapIdx = floor.slots.reduce(
-    (max, s) => Math.max(max, s.grade === '?' ? 0 : CFG.TRAP_BONUS[s.grade]),
+    (max, s) => Math.max(max, slotGradeBonus(effectiveGrade(s))),
     0
   );
-  const floorTypes = new Set(floor.slots.flatMap((s) => s.types));
+  const floorTypes = new Set(
+    floor.slots.flatMap((s) => (effectiveGrade(s) === '?' ? [] : s.types))
+  );
 
   const detailLines: string[] = [];
   const shortSummary: string[] = [];
@@ -515,6 +526,15 @@ export function resolveFloorEncounter(
     const eroGated = Boolean(
       faced && floor.slots[faced.index].types.some((t) => TRAP_ERO_TYPES.includes(t))
     );
+    // Ticket 30 KP targetability (defense-side): a TIER-attuned slot plays to
+    // the kink it absorbed — a hero facing it whose kinkKey maps to the slot's
+    // types (the F1 mapping) takes mods −1 (audit-noted).
+    const attunementTargeted = Boolean(
+      faced && faced.kinkMatched && (floor.slots[faced.index].attunement ?? 0) >= TRAP_ATTUNEMENT.TIER
+    );
+    if (attunementTargeted) {
+      mods -= 1;
+    }
 
     let die = randInt(1, 20);
     let rerolled = false;
@@ -557,9 +577,20 @@ export function resolveFloorEncounter(
       h.corrFeed = (h.corrFeed ?? 0) + 1;
     }
 
+    // Ticket 30 DoL exposure loop (dungeon-side): an ASCENDANT-attuned slot
+    // feeds corrFeed even on a pass — heroes soak the trap's perfected gimmick
+    // just by passing through. Second corrFeed writer, stacks with the
+    // ero-beat writer above (kept intact).
+    if (faced && (floor.slots[faced.index].attunement ?? 0) >= TRAP_ATTUNEMENT.ASCENDANT) {
+      h.corrFeed = (h.corrFeed ?? 0) + 1;
+    }
+
     const afterNotes: string[] = [];
     if (metaMods.labels.length > 0) {
       afterNotes.push(`mods[${metaMods.labels.join(' ')}]`);
+    }
+    if (attunementTargeted) {
+      afterNotes.push(`attuned trap targets ${h.kinkKey} kink (mods −1)`);
     }
     if (beatKey === 'dead' || beatKey === 'captured' || beatKey === 'blunder') {
       const hasGrit = (h.grit ?? 0) > 0;
@@ -592,7 +623,14 @@ export function resolveFloorEncounter(
         afterNotes.push('capture meter spent — STAGGERED, alive but shaken (mods −1)');
       } else {
         h.status = beatKey === 'dead' ? 'dead' : 'captured';
-        if (h.status === 'captured') caughtBySlot = 'captured';
+        if (h.status === 'captured') {
+          caughtBySlot = 'captured';
+          // Ticket 30 capture-seed plumbing: remember WHICH slot absorbed the
+          // capture beat so the settlement seed can read that slot's
+          // attunement/attunedKink (cleared at the settlement resolution
+          // point).
+          h.facedSlotIdx = faced?.index;
+        }
         h.fallenFloor = floor.floor;
         h.fallenWave = wave;
         fell.push(h);
@@ -1062,26 +1100,35 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
         // formula — computed LOCALLY at the capture boundary, nothing stored
         // on hero or prisoner. facedSlotTypes is the capture floor's slot
         // types (the capture beat resolved against one of those slots).
+        // Ticket 30: the attunement term needs the SPECIFIC faced slot, not
+        // just the floor — resolveFloorEncounter plumbs the index through
+        // Hero.facedSlotIdx when the capture beat lands; legacy captures
+        // without it simply contribute no attunement term.
         const captureFloor = state.floors.find(
           (fl) => fl.floor === (h.fallenFloor ?? state.floorCursor)
         );
+        const facedSlot =
+          h.facedSlotIdx !== undefined ? captureFloor?.slots[h.facedSlotIdx] : undefined;
         const facedSlotTypes = (captureFloor?.slots ?? []).flatMap((s) => s.types);
         const matchedKink =
-          KINK_TRAP_MAP[h.kinkKey]?.some((t) => facedSlotTypes.includes(t)) ?? false;
+          (KINK_TRAP_MAP[h.kinkKey]?.some((t) => facedSlotTypes.includes(t)) ?? false) ||
+          facedSlot?.attunedKink === h.kinkKey;
         // Corruption seam (ticket 27): debate seed formula replaces the old
         // 2-boolean seed (lewd?20 + aroused?15). +5 warm-but-bound baseline;
         // corrFeed pays out ×8 — read HERE, BEFORE the settlement reset below
         // wipes it (ticket 26 deliberately ordered the reset after this
         // prisoner build); kink targeting pays lewd +20 / aroused +15 /
-        // matched faced slot +10. Clamped to 45 so even a fully-pressured
-        // kink-matched capture lands at the Wavering/Complicit border —
-        // continuity, never a free win.
+        // matched faced slot +10. Ticket 30: a faced slot attuned to at least
+        // TIER knows exactly how to hold this hero — +10. Clamped to 45 so
+        // even a fully-pressured kink-matched capture lands at the
+        // Wavering/Complicit border — continuity, never a free win.
         const corr = clamp(
           5 +
             (h.traits.includes('lewd') ? 20 : 0) +
             (h.aroused ? 15 : 0) +
             (h.corrFeed ?? 0) * 8 +
-            (matchedKink ? 10 : 0),
+            (matchedKink ? 10 : 0) +
+            ((facedSlot?.attunement ?? 0) >= TRAP_ATTUNEMENT.TIER ? 10 : 0),
           0,
           45
         );
@@ -1515,14 +1562,22 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
     // the wrong pattern for a mid-raid meter). Corruption seam (ticket 26):
     // corrFeed is a per-raid ledger and clears the same way for ALL heroes
     // (captured, retreated, staggered-converted) after the settlement above
-    // consumed it.
+    // consumed it. Ticket 30: facedSlotIdx plumbing clears alongside.
     party: postState.party.map((h) => {
-      if (!h.staggered && !h.usedStagger && h.corrFeed === undefined) return h;
+      if (
+        !h.staggered &&
+        !h.usedStagger &&
+        h.corrFeed === undefined &&
+        h.facedSlotIdx === undefined
+      ) {
+        return h;
+      }
       const next = { ...h };
       if (next.staggered && next.cond === 'severe') next.cond = 'injured';
       delete next.staggered;
       delete next.usedStagger;
       delete next.corrFeed;
+      delete next.facedSlotIdx;
       return next;
     }),
     expedition: tickExpeditionAftereffects(postState).expedition,
