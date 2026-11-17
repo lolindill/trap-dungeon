@@ -78,6 +78,83 @@ Recreate *Ero Trap Dungeon Maker* from a RisuAI chat-embedded Lua module into a 
 
 ---
 
+### Phase 5 — Raid Logic Overhaul: Faced-Trap Resolution & Capture Meter ✅ COMPLETE (Built & Verified)
+
+**Goal:** Make individual trap slots mechanically meaningful (per-hero faced-trap type gating) and give capture a gradual meter (`staggered`) instead of an instant status flip — closing the audit findings that trap *types* are flavor-only (picked after the roll, `raid.ts` `faced:` text) and that heroes die/capture in a single beat with no progression.
+
+**Audit Basis (scrutinized end-to-end):** Trap **grades** already feed floor DC (`dungeon.getFloorDC`: `TRAP_BONUS` sum + synergy + combat slots + capped raid-mod seam), and `highTrapIdx`/`floorTypes` gate `brute`/`sadist`/`lewd`/nemesis traits — but the faced trap has zero mechanical effect, `TrapSlot` has no runtime status, and the capture path is a one-roll `HeroStatus` flip in `resolveFloorEncounter`. Verified the ladder is barely unit-tested (only the core-guard capture text is asserted in `raidMods.test.ts`).
+
+**Locked Design Decisions:**
+1. **Scope — F1 + F2 only (F3 trap-wear rejected):** wire faced-trap type resolution (F1) and a capture meter (F2). Trap runtime status (triggered/spent/disarm) is intentionally out of scope.
+2. **F1 effect — Ero-gating:** a failed roll inside an **ero-type** slot always resolves `captured` (never `dead` — even for `severe` heroes or deep-negative margins). Standard-type slots keep the existing ladder (`severe → dead`, `nat1 → blunder`, `−margin ≥ deathMargin → dead`, else `captured`).
+   - `TRAP_ERO_TYPES = lewd, bind, cloth, parasite, mutate` (5 of the 14 `TRAP_TYPES`; `mind`/`water` stay standard).
+3. **F1 targeting — Kink-weighted, selected BEFORE the roll:** every hero *faces* one slot of the floor: `disarmer` → highest-grade slot; heroes whose `kinkKey` matches a slot type via `KINK_TRAP_MAP` → that slot gets ×2 selection weight; others uniform random. The faced slot replaces the post-roll flavor pick and feeds gating, detail text, and the audit row.
+   - `KINK_TRAP_MAP`: bondage↔bind · drugs↔poison+parasite · hypnosis↔mind · tentacle↔parasite · praise/degradation/service/edging/worship/group/succubus↔lewd · exhibition/public/uniform/feet/petplay↔cloth(+bind) · vampire/breeding/lactation↔parasite · rough/pain↔phys · chastity↔bind.
+4. **F2 trigger — Universal 1-free meter:** the first would-be `captured` beat per hero per raid converts to **STAGGERED** instead (hero remains fully `alive`); a repeat captured-beat while staggered → `captured` for real. Death paths (`severe` fail in standard slots, deep-negative margin) **bypass** the meter — they still kill outright.
+5. **F2 recovery — lasts until raid end:** staggered heroes take `mods −1` in every remaining room, do not recover on passing rolls, never enter `fell` (no monster XP, no fear gain), and at settlement convert to `alive` with `cond` no worse than `injured`. Core-guard capture at the Core Room bypasses the meter (climax catch is the point).
+
+**Status Variable Design (locked — boolean flags, NOT an enum member):** `HeroStatus` stays untouched. Add optional `staggered?: boolean` + `usedStagger?: boolean` to `Hero`. Staggered heroes count as `alive` in every existing filter — all ~20 `status === 'alive'` sites in `raid.ts` (room loop, healer, monster-die odds, retreat, outcome counting, core branch, settlement) remain untouched, so an all-staggered party can never be misclassified as a wipe. Both flags reset at the **settlement resolution point** (`applyWaveSettlement`, the same ticket-16 block as the estate.perks one-shots) — *not* at hero creation (`injIgnored`/`usedLuck` are create-time resets and the wrong pattern here). Legacy saves stay valid (optional fields only).
+
+**Ladder Order (grit stays outermost — no double shield):**
+```
+beat:  pass (die≠1, margin≥0)              → easy / clean / narrow
+       nat20                               → luck
+       !eroGated && severe fail            → dead
+       !eroGated && nat1                   → blunder
+       !eroGated && −margin ≥ deathMargin  → dead
+       else (all ero fails)                → captured
+resolve: grit? → ENDURE (existing 2◆/1◆, cond worsens — meter untouched)
+         else captured-beat && !usedStagger → STAGGERED (usedStagger = true, mods −1)
+         else                              → dead / captured
+```
+Extract a **pure `decideBeat(ctx)`** out of `resolveFloorEncounter` so every gate combination (grit × meter × gating × deathMargin × nat1/nat20) is deterministically unit-testable.
+
+**Implementation Surface (6 touch points):**
+1. [types/game.ts](file:///c:/novel/trap_dun/app/src/types/game.ts): `Hero.staggered?` / `Hero.usedStagger?`; faced-slot info on `RaidAuditRow`.
+2. [data/constants.ts](file:///c:/novel/trap_dun/app/src/data/constants.ts): `TRAP_ERO_TYPES`, `KINK_TRAP_MAP`, and a `BEATS.staggered` entry (missing entry would silently degrade flavor via the `BEATS[beatKey] ?? BEATS.clean` fallback).
+3. [engine/raid.ts](file:///c:/novel/trap_dun/app/src/engine/raid.ts): faced-slot selection before rolls, pure `decideBeat`, grit→meter→capture resolution, staggered `mods −1` + floor-link stumble mark, settlement flag reset + `cond` clamp (also for `retreated` heroes).
+4. [llm/promptBuilder.ts](file:///c:/novel/trap_dun/app/src/llm/promptBuilder.ts): add `staggered` to the hero `conds` list so the LLM canon rule ("obey every outcome, status…") actually sees it.
+5. [components/RaidPanel.tsx](file:///c:/novel/trap_dun/app/src/components/RaidPanel.tsx): staggered status badge alongside alive/dead/captured.
+6. Tests: new ladder unit tests per gate combination, all-staggered ≠ wipe regression, settlement conversion, ero-gating never-dead proof; `raidMods.test.ts` council caps (±4 DC seam) must stay green.
+
+**Deliberately unchanged:** `HeroStatus` enum · all `status === 'alive'` filters · `raidMods.ts` council caps · XP/fear rewards (staggered grants none) · core-guard capture · on-disk save format (optional fields only).
+
+**Verification:** `vitest run` passes **209/209 tests** across **12 test files** (17 new Phase 5 ladder/meter tests: `decideBeat` gate matrix, kink-weighted faced-slot selection, ero-never-dead incl. `severe` heroes, first-captured→STAGGERED→repeat-captured, staggered `mods −1`, all-staggered-≠-wipe breach regression, settlement conversion + retreated cond clamp) and `tsc -b && vite build` builds cleanly with zero TypeScript errors. All existing suites (raidMods council caps, monsters XP/betrayal, grit ENDURE, core-guard capture) stay green — the grit → meter → capture resolution keeps grit outermost and the core-guard capture bypasses the meter as locked.
+
+---
+
+### Phase 5.5 — Corruption Seam: Hero→Prison Continuity & CORR Tiers 📋 DESIGNED (Depends on Phase 5)
+
+**Goal:** Close the audit finding that raid and prison are disconnected economies — the capture boundary drops hero identity (`kinkKey/persona/skill/weakness` never reach `Prisoner`), prisoner `corr` has no raid-side feed and no passive loop, and `endings.ts` never reads corr. Make the 24 kink labels economically alive where state actually persists (debate adjudicated: corruption meters belong on the persistent prisoner layer, NOT on disposable per-raid heroes).
+
+**Basis:** [wayfinder/research/phase5-corruption-debate.md](file:///c:/novel/trap_dun/wayfinder/research/phase5-corruption-debate.md) — external genre research (CoC/TiTS/Karryn's Prison/DoL/RimWorld/DD/trainer-genre) + repo label audit + 3-agent debate (Maximalist/Minimalist/Judge). Judge rulings: kink targeting & ero-gating KEEP (Phase 5 sound); boolean STAGGER = right scaffold, wrong ceiling; RimWorld two-phase / KP targetability (prison-only) / TiTS ratchet / CoC AND-gates / DoL no-pure-recovery ADOPT(ED); full in-raid WILL/DESIRE meters REJECTED (one derived `corrFeed` integer instead); tier words to LLM, never raw ints.
+
+**Locked decisions:**
+1. **Hero `corrFeed` ledger:** `+1` per ero-slot beat (pass or fail), reset at settlement with the `staggered` flags — the only hero-side corruption state.
+2. **Capture identity carry:** `Prisoner` gains optional `kinkKey/kinkDesc/persona/skill/weakness`; capture literal (raid.ts:799-840) copies them. Optional fields only — no schema bump (Phase 5 pattern).
+3. **Capture seed formula:** `corr = clamp(5 + (lewd?20) + (aroused?15) + corrFeed×8 + (matchedKink?10), 0, 45)` — captures arrive *warmed*, never pre-broken.
+4. **`CORR_TIERS` label lattice:** `Resistant 0-24 · Wavering 25-49 · Complicit 50-69 · Devoted 70-84 · Hollowed 85-100` (+ `CORR_RATCHET_FLOOR = 85` constant) — Phase 5.5 ships labels only (roster prompt context + PrisonPanel chips); mechanics wire in Phase 6.
+5. **Nightly kink drift (no second loop):** inside the existing `applyManagementSettle` — prisoner `kinkKey` intersecting installed floor trap types via `KINK_TRAP_MAP` → `corr +1 / resist −1`; comfort jobs `corr +1` (recovery IS corruption — DoL rule).
+
+**Tickets:** [wayfinder/corruption/MAP.md](file:///c:/novel/trap_dun/wayfinder/corruption/MAP.md) (`26`–`28`).
+
+---
+
+### Phase 6 — Trap Lifecycle & Attunement + Trainer Depth 📋 DESIGNED (Depends on Phase 5.5)
+
+**Goal:** Revive Phase 5's rejected "F3 trap-wear" as a harmonized trap-side ledger and wire the trainer-depth lattice, so one beat event corrupts two ledgers at once — the hero remembers in `corrFeed`, the trap remembers in `attunement` (the dungeon itself becomes a corruption asset with permanent cross-wave growth, parallel to monster evolution).
+
+**Locked decisions (improvised Stage 2.5 design + Stage 3 lattice — provenance marked in the research doc §5):**
+1. **`TrapSlot` runtime state (first ever):** optional `status?: 'armed'|'spent'|'disarmed'`, `wear?` (0-100, temporary), `attunement?` (0-100, permanent ratchet at tier 50), `attunedKink?` — `waveStartSnapshot` covers rewind free.
+2. **Write path:** every beat vs the faced slot `wear +10` (kink-matched +15); stagger/capture beat `attunement +15` + `attunedKink = hero.kinkKey`; `disarmer` pass with margin ≥5 on the faced slot → `disarmed` (skips faced-selection, drops `TRAP_BONUS`). Settlement: `status → armed`, `wear −30`; attunement persists forever.
+3. **Read path:** `wear ≥ 60` → `effectiveGrade −1` in `getFloorDC`/`highTrapIdx`; `wear ≥ 100` → spent; `attunement ≥ 50` → kink-matched hero `mods −1` + capture seed `+10`; `attunement ≥ 85` → floor DC `+1` + pass-through `corrFeed +1` (DoL exposure loop, dungeon-side); `Repair All` Day-loop action (AP + MP) clears wear.
+4. **Trainer depth (prison-only, KP/CoC per judge):** pact defs gain `kinkFamily?: string[]`; kink-matched pacts scale by `CORR_TIERS` (Wavering die +2/resist ×0.9 → Hollowed: all reqs waived + ratchet lock 85); conversion AND-gates gain corr clauses (`corr≥60 AND pleasure3+obey2` alt-route); predicted deltas on pact buttons; single `applyCorrDelta` ratchet funnel.
+5. **Endgame payoff:** dominion-tier ending gate (total attunement ≥300 + ≥5 corr-100 prisoners); liberation/romance ending tint by avg corr; Endless rank scoring corruption multiplier; DD-style in-raid resolve roll = wire-or-cut triage (default CUT).
+
+**Tickets:** [wayfinder/corruption/MAP.md](file:///c:/novel/trap_dun/wayfinder/corruption/MAP.md) (`29`–`32`).
+
+---
+
 ## How to Run Right Now
 
 ```powershell

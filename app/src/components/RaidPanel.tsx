@@ -83,6 +83,7 @@ export function RaidPanel({ state, isBusy, onAdvanceFloor }: RaidPanelProps) {
               {h.cond === 'severe' && <span className="dk-badge r">SEVERE (-4)</span>}
               {h.ailment > 0 && <span className="dk-badge c">AFFLICTED (-2)</span>}
               {h.aroused && <span className="dk-badge m">AROUSED (-1)</span>}
+              {h.staggered && <span className="dk-badge m">STAGGERED (-1)</span>}
             </div>
 
             {h.lastRollText && (

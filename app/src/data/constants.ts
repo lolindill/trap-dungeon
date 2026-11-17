@@ -468,6 +468,20 @@ export const BEATS: Record<string, BeatDef> = {
       { text: 'gets distracted by something stupid at the worst moment' },
     ],
   },
+  // Phase 5 F2 capture meter: the first would-be captured beat per hero per
+  // raid resolves as STAGGERED (hero stays fully alive). A missing entry would
+  // silently degrade flavor via the `BEATS[beatKey] ?? BEATS.clean` fallback.
+  staggered: {
+    outcomeLabel: 'STAGGERED — the trap takes its toll, but they tear free',
+    how: [
+      { text: 'the gimmick pins them long enough to leave a mark before they twist out' },
+      { text: 'limps out of the mechanism, barely holding their gear and composure together' },
+      { text: 'the trap tastes them and lets go — shaken, flushed and slower now' },
+      { text: 'breaks loose on instinct alone, then needs a moment just to stand' },
+      { text: 'is dragged under and surfaces on pure stubbornness, dignity in tatters', cond: 's' },
+      { text: 'is yanked out by a teammate at the last second, both of them rattled', cond: 't' },
+    ],
+  },
 };
 
 export const TRAP_TYPES = [
@@ -486,6 +500,41 @@ export const TRAP_TYPES = [
   'mutate',
   'curse',
 ] as const;
+
+// Phase 5 F1 (locked): ero-type slots gate the capture ladder — a failed roll
+// inside one of these slot types always resolves `captured`, never `dead`
+// (even for `severe` heroes or deep-negative margins). 5 of the 14 TRAP_TYPES;
+// `mind`/`water` stay standard.
+export const TRAP_ERO_TYPES: readonly string[] = ['lewd', 'bind', 'cloth', 'parasite', 'mutate'];
+
+// Phase 5 F1 (locked): hero kink → the trap types that kink is drawn to. The
+// faced slot is selected BEFORE the d20 roll; a slot whose types intersect the
+// hero's kink entry gets ×2 selection weight. Kinks absent from the map (toys,
+// scent) have no matching trap type and stay uniform weight.
+export const KINK_TRAP_MAP: Record<string, string[]> = {
+  bondage: ['bind'],
+  drugs: ['poison', 'parasite'],
+  hypnosis: ['mind'],
+  tentacle: ['parasite'],
+  praise: ['lewd'],
+  degradation: ['lewd'],
+  service: ['lewd'],
+  edging: ['lewd'],
+  worship: ['lewd'],
+  group: ['lewd'],
+  succubus: ['lewd'],
+  exhibition: ['cloth', 'bind'],
+  public: ['cloth', 'bind'],
+  uniform: ['cloth', 'bind'],
+  feet: ['cloth', 'bind'],
+  petplay: ['cloth', 'bind'],
+  vampire: ['parasite'],
+  breeding: ['parasite'],
+  lactation: ['parasite'],
+  rough: ['phys'],
+  pain: ['phys'],
+  chastity: ['bind'],
+};
 
 export const OPENING_TEXT = `Blue mana pulses through a seven-floor labyrinth. Deep below, a Dungeon Core beats like a slow heart, waiting for its new master.
 

@@ -40,6 +40,7 @@ function summarizeHeroLine(h: Hero): string {
   if (h.cond) conds.push(h.cond);
   if (h.ailment > 0) conds.push('afflicted');
   if (h.aroused) conds.push('aroused');
+  if (h.staggered) conds.push('staggered');
   const statusStr = conds.length > 0 ? ` [${conds.join(', ')}]` : '';
   return [
     `#${h.slot} ${h.name || `${h.raceLabel} ${h.classLabel}`} (${h.grade}-rank, ${h.status}${statusStr})`,

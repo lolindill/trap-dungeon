@@ -112,6 +112,11 @@ export interface Hero {
   aroused: boolean;
   usedLuck: boolean;
   injIgnored: boolean;
+  // Phase 5 F2 capture meter — boolean flags, NOT HeroStatus members. A
+  // staggered hero counts as `alive` in every existing filter; both flags
+  // reset at the settlement resolution point (applyWaveSettlement).
+  staggered?: boolean;
+  usedStagger?: boolean;
   lastRollText: string;
   fallenFloor?: number;
   fallenWave?: number;
@@ -155,6 +160,7 @@ export interface RaidAuditRow {
   beat: string;
   fearPenalty: number;
   statusAfter: HeroStatus;
+  faced?: string;
 }
 
 export type RaidOutcome = 'pass' | 'fall' | 'wipe' | 'retreat' | 'partial' | 'breach';

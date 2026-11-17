@@ -1,4 +1,4 @@
-import { BEATS, CFG } from '../data/constants';
+import { BEATS, CFG, KINK_TRAP_MAP, TRAP_ERO_TYPES } from '../data/constants';
 import { getMonsterDisplayName, getMonsterLineage, MONSTER_CFG, MONSTER_OCC_ACT } from '../data/monsterData';
 import { CRISIS_CFG, EPIC_CFG, WAR_CFG } from '../data/realmData';
 import type {
@@ -9,6 +9,7 @@ import type {
   Prisoner,
   RaidAuditRow,
   RaidOutcome,
+  TrapSlot,
 } from '../types/game';
 import {
   formatFloorRoomText,
@@ -33,7 +34,7 @@ import {
 import { tickExpeditionAftereffects } from './expedition';
 import { isActiveMole } from './prison';
 import { purgeConsumedRaidMods, resolveRaidModifiers } from './raidMods';
-import { clamp, pickOne, randInt } from './rng';
+import { clamp, pickOne, pickWeighted, randInt } from './rng';
 
 function fearPenalty(state: GameState, hero: Hero, partyHasCleric: boolean): number {
   if (
@@ -60,6 +61,111 @@ function pickHowFlavor(beatKey: string, hasCombo: boolean, hasTeam: boolean, sol
     return false;
   });
   return pickOne(pool.length > 0 ? pool : beat.how).text;
+}
+
+// --- Phase 5: faced-trap resolution & capture meter -------------------------
+
+export interface FacedSlotInfo {
+  index: number;
+  label: string;
+  kinkMatched: boolean;
+}
+
+export interface BeatCtx {
+  die: number;
+  margin: number;
+  wasSevere: boolean;
+  deathMargin: number;
+  /** True when the hero faces a TRAP_ERO_TYPES slot (Phase 5 F1 gating). */
+  eroGated: boolean;
+}
+
+function slotGradeBonus(grade: string): number {
+  return grade === '?' ? 0 : CFG.TRAP_BONUS[grade as keyof typeof CFG.TRAP_BONUS] ?? 0;
+}
+
+export function slotKinkMatched(kinkKey: string, slotTypes: string[]): boolean {
+  const kinkTypes = KINK_TRAP_MAP[kinkKey];
+  return Boolean(kinkTypes && slotTypes.some((t) => kinkTypes.includes(t)));
+}
+
+function slotLabel(slot: TrapSlot): string {
+  return slot.text.split(' — ')[0].slice(0, 24);
+}
+
+/**
+ * Phase 5 F1: pure faced-slot weights. disarmer → one-hot on the
+ * highest-grade slot; kink-matched slots (KINK_TRAP_MAP) → ×2; else uniform.
+ */
+export function facedSlotWeights(
+  hero: Pick<Hero, 'kinkKey' | 'traits'>,
+  floor: FloorState
+): number[] {
+  if (floor.slots.length === 0) return [];
+  if (hero.traits.includes('disarmer')) {
+    let best = 0;
+    for (let i = 1; i < floor.slots.length; i += 1) {
+      if (slotGradeBonus(floor.slots[i].grade) > slotGradeBonus(floor.slots[best].grade)) {
+        best = i;
+      }
+    }
+    return floor.slots.map((_, i) => (i === best ? 1 : 0));
+  }
+  return floor.slots.map((s) => (slotKinkMatched(hero.kinkKey, s.types) ? 2 : 1));
+}
+
+/**
+ * Phase 5 F1: pick the slot a hero FACES before the d20 roll. Replaces the old
+ * post-roll flavor pick — the faced slot gates ero-capture, feeds the detail
+ * text and the audit row.
+ */
+export function selectFacedSlot(
+  hero: Pick<Hero, 'kinkKey' | 'traits'>,
+  floor: FloorState
+): FacedSlotInfo | null {
+  if (floor.slots.length === 0) return null;
+  const weights = facedSlotWeights(hero, floor);
+  const index = pickWeighted(
+    weights.map((_, i) => i),
+    (i) => weights[i]
+  );
+  const slot = floor.slots[index];
+  return {
+    index,
+    label: slotLabel(slot),
+    kinkMatched: slotKinkMatched(hero.kinkKey, slot.types),
+  };
+}
+
+/**
+ * Phase 5: the pure beat ladder, extracted from resolveFloorEncounter so every
+ * gate combination (ero-gating × severe × nat1/nat20 × deathMargin) is
+ * deterministically unit-testable. Grit → meter resolution stays with the
+ * caller (grit is the outermost shield — it consumes pips, never the meter).
+ *
+ * Ladder (locked in plan.md):
+ *   pass (die≠1, margin≥0)              → easy / clean / narrow
+ *   nat20                               → luck
+ *   !eroGated && severe fail            → dead
+ *   !eroGated && nat1                   → blunder
+ *   !eroGated && −margin ≥ deathMargin  → dead
+ *   else (all ero fails)                → captured
+ */
+export function decideBeat(ctx: BeatCtx): string {
+  if (ctx.die !== 1 && ctx.margin >= 0) {
+    return ctx.margin >= CFG.EASY_MARGIN
+      ? 'easy'
+      : ctx.margin >= CFG.CLEAN_MARGIN
+        ? 'clean'
+        : 'narrow';
+  }
+  if (ctx.die === 20) return 'luck';
+  if (!ctx.eroGated) {
+    if (ctx.wasSevere) return 'dead';
+    if (ctx.die === 1) return 'blunder';
+    if (-ctx.margin >= ctx.deathMargin) return 'dead';
+  }
+  return 'captured';
 }
 
 function stripRaidLinkKeys(apUsed: Record<string, boolean>): Record<string, boolean> {
@@ -203,7 +309,9 @@ export function resolveFloorEncounter(
       ailmentPen -
       fPen -
       h.intel -
-      (h.aroused ? 1 : 0);
+      (h.aroused ? 1 : 0) -
+      // Phase 5 F2: staggered heroes are shaken — −1 mods in every remaining room.
+      (h.staggered ? 1 : 0);
 
     if (hasLeader && !h.traits.includes('leader')) mods += 1;
     if (h.traits.includes('cautious') && firstRoom) mods += 1;
@@ -297,6 +405,14 @@ export function resolveFloorEncounter(
       }
     }
 
+    // Phase 5 F1: face a slot BEFORE the roll — kink-weighted selection feeds
+    // ero-gating, detail text and the audit row (replaces the old post-roll
+    // flavor pick).
+    const faced = selectFacedSlot(h, floor);
+    const eroGated = Boolean(
+      faced && floor.slots[faced.index].types.some((t) => TRAP_ERO_TYPES.includes(t))
+    );
+
     let die = randInt(1, 20);
     let rerolled = false;
     if (die === 1 && h.traits.includes('lucky') && !h.usedLuck) {
@@ -321,25 +437,10 @@ export function resolveFloorEncounter(
       (h.traits.includes('veteran') ? 2 : 0) +
       (h.traits.includes('submissive') ? 1 : 0);
 
-    let beatKey: keyof typeof BEATS;
-    if (die !== 1 && margin >= 0) {
-      beatKey =
-        margin >= CFG.EASY_MARGIN
-          ? 'easy'
-          : margin >= CFG.CLEAN_MARGIN
-            ? 'clean'
-            : 'narrow';
-    } else if (die === 20) {
-      beatKey = 'luck';
-    } else if (wasSevere) {
-      beatKey = 'dead';
-    } else if (die === 1) {
-      beatKey = 'blunder';
-    } else if (-margin >= deathMargin) {
-      beatKey = 'dead';
-    } else {
-      beatKey = 'captured';
-    }
+    // Phase 5: the ladder is now the pure decideBeat() — a failed roll in an
+    // ero-gated slot funnels to `captured` (never dead), standard slots keep
+    // the old death ladder verbatim.
+    const beatKey = decideBeat({ die, margin, wasSevere, deathMargin, eroGated });
 
     const afterNotes: string[] = [];
     if (metaMods.labels.length > 0) {
@@ -365,6 +466,14 @@ export function resolveFloorEncounter(
           }
           h.adaptedTags = [...adapted];
         }
+      } else if (beatKey !== 'dead' && !h.usedStagger) {
+        // Phase 5 F2 capture meter: the FIRST would-be captured beat per hero
+        // per raid converts to STAGGERED — the hero stays fully alive and
+        // never enters `fell` (no monster XP, no fear gain). Death paths
+        // bypass the meter; so does the core-guard capture at the Core Room.
+        h.usedStagger = true;
+        h.staggered = true;
+        afterNotes.push('capture meter spent — STAGGERED, alive but shaken (mods −1)');
       } else {
         h.status = beatKey === 'dead' ? 'dead' : 'captured';
         h.fallenFloor = floor.floor;
@@ -429,8 +538,9 @@ export function resolveFloorEncounter(
 
     if (
       h.status === 'alive' &&
-      (beatKey === 'narrow' || h.ailment > 0 || h.aroused)
+      (beatKey === 'narrow' || h.staggered || h.ailment > 0 || h.aroused)
     ) {
+      // Phase 5 F2: a staggered hero stumbles — the floor-link mark applies.
       nextApUsed[`__lk_${h.slot}_${floor.floor}`] = true;
     }
 
@@ -442,19 +552,16 @@ export function resolveFloorEncounter(
 
     const beat = BEATS[beatKey];
     const how = pickHowFlavor(beatKey, floor.slots.length >= 2, alive.length >= 2, alive.length === 1);
-    let faced = '';
-    if (floor.slots.length >= 2) {
-      const trapIdx = randInt(0, floor.slots.length - 1);
-      const trapLabel = floor.slots[trapIdx].text.split(' — ')[0].slice(0, 24);
-      faced = ` · faced: #${trapIdx + 1} ${trapLabel}`;
-    }
+    const facedText = faced
+      ? ` · faced: #${faced.index + 1} ${faced.label}${faced.kinkMatched ? ' · kink' : ''}`
+      : '';
 
     const condPrefix = activeConds.length > 0 ? ` [${activeConds.join(', ')}]` : '';
     const afterSuffix = afterNotes.length > 0 ? `, ${afterNotes.join(', ')}` : '';
     const signMargin = margin >= 0 ? `+${margin}` : `${margin}`;
 
     detailLines.push(
-      `- ${h.name}${condPrefix}: ${beat.outcomeLabel} (margin ${signMargin})${afterSuffix}${faced} · hint: ${how}`
+      `- ${h.name}${condPrefix}: ${beat.outcomeLabel} (margin ${signMargin})${afterSuffix}${facedText} · hint: ${how}`
     );
     shortSummary.push(`${h.name}: ${beat.outcomeLabel}`);
     h.lastRollText = `d20(${die})${mods >= 0 ? `+${mods}` : mods}=${die + mods} vs DC ${dc}`;
@@ -472,6 +579,9 @@ export function resolveFloorEncounter(
       beat: beatKey,
       fearPenalty: fPen,
       statusAfter: h.status,
+      faced: faced
+        ? `#${faced.index + 1} ${faced.label}${faced.kinkMatched ? ' (kink)' : ''}`
+        : undefined,
     });
   }
 
@@ -1218,6 +1328,19 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
     : postState.prisoners;
   const settled = {
     ...postState,
+    // Phase 5 F2: staggered converts back to plain alive at settlement with
+    // cond no worse than injured (retreated staggered heroes included), and
+    // both capture-meter flags reset HERE — the settlement resolution point —
+    // not at hero creation (injIgnored/usedLuck are create-time resets and
+    // the wrong pattern for a mid-raid meter).
+    party: postState.party.map((h) => {
+      if (!h.staggered && !h.usedStagger) return h;
+      const next = { ...h };
+      if (next.staggered && next.cond === 'severe') next.cond = 'injured';
+      delete next.staggered;
+      delete next.usedStagger;
+      return next;
+    }),
     expedition: tickExpeditionAftereffects(postState).expedition,
     prisoners: tickedPrisoners,
     crises: {
