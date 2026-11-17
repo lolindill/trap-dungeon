@@ -2,6 +2,7 @@
 summary: Wire corruption ledgers into endings/Endless scoring (attunement dominion gate, corr-tinted divergence) and triage the optional in-raid resolve roll
 labels: [wayfinder:task]
 status: open
+blocked-by: [30-trap-read-path-dc-attunement-effects](30-trap-read-path-dc-attunement-effects.md), [31-corr-tiers-pact-mechanics-conversion-lattice](31-corr-tiers-pact-mechanics-conversion-lattice.md)
 assignee: unclaimed
 ---
 

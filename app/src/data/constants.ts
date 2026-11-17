@@ -582,9 +582,3 @@ Use **Build** to install traps on your floors—or craft and save reusable **Tra
 // their prisonerDelta (brothel, manor, toilet, barracks, lure, trusty,
 // breeder) are deliberately NOT listed (no double-dipping).
 export const COMFORT_JOBS: readonly string[] = ['bath', 'tavern'];
-
-// Ticket 28 (corruption seam III): corr ratchet floor (TiTS ratchet, tier 85
-// per MAP consensus). Clamp site lives in applyManagementSettle's per-prisoner
-// settle map; ticket 31 owns the lowering paths it guards — a Hollowed
-// prisoner never settles back below the floor.
-export const CORR_RATCHET_FLOOR = 85; // dedupe with ticket 27 on merge

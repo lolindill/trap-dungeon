@@ -2,7 +2,8 @@
 summary: Replace the 2-boolean capture seed with the debate formula and add the CORR_TIERS label lattice to roster prompt + prison UI
 labels: [wayfinder:task]
 status: open
-assignee: unclaimed
+blocked-by: [26-corrfeed-ledger-capture-identity-carry](26-corrfeed-ledger-capture-identity-carry.md)
+assignee: kevii/agent-w2-27
 ---
 
 # 27: Corruption Seam II — Capture Seed Formula + `CORR_TIERS` Labels

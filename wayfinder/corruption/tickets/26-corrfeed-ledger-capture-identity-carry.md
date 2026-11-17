@@ -1,8 +1,8 @@
 ---
 summary: Build the hero-side corrFeed ledger and carry hero identity (kink/persona/skill) through the capture boundary into Prisoner
 labels: [wayfinder:task]
-status: open
-assignee: unclaimed
+status: closed *(2026-11-17 — corrFeed ledger + capture identity carry shipped; matchedKink left as settlement local for ticket 27; 247/247 green post-merge)*
+assignee: kevii/agent-w1-26
 ---
 
 # 26: Corruption Seam I — Hero `corrFeed` Ledger + Capture Identity Carry
@@ -27,3 +27,13 @@ assignee: unclaimed
 - [ ] Legacy save without the new fields loads and plays (extend `migrationAndSlots.test.ts` load test)
 - [ ] Phase 5's all-staggered-≠-wipe and ero-never-dead proofs stay green
 - [ ] `vitest run` + `tsc -b && vite build` green
+
+## Resolution
+
+**RESOLVED 2026-11-17** — commit `304d946` on `wayfinder/corr-26`, fast-forwarded to main, then carried clean through the auto-merge with ticket 29; combined main = **247/247 green + `tsc -b && vite build` green**.
+
+- **corrFeed writer:** room loop, immediately after `decideBeat()` when the beat is ero-gated (`TRAP_ERO_TYPES`) — `+1` on pass AND fail; kink-matched faced slot counts once; the field's only writer.
+- **Identity carry:** `applyWaveSettlement` copies `kinkKey/kinkDesc/persona/skill/weakness` into the prisoner literal; `matchedKink` computed per spec formula (`KINK_TRAP_MAP[hero.kinkKey]?.some(t => facedSlotTypes.includes(t))`) as a LOCAL only — nothing stored (ticket 27 consumes).
+- **Reset:** corrFeed cleared at the ticket-16 settlement resolution point for ALL heroes (captured / retreated / staggered-converted), placed after the prisoner build so ticket 27 can read the raid's corrFeed inside the same settlement.
+- **Deviations (2):** (1) `void matchedKink` placeholder — `noUnusedLocals: true` fails the build on an unconsumed local; local kept + voided with a pointer comment until ticket 27 consumes it. (2) `facedSlotTypes` at settlement derives from the capture floor's slot types (`h.fallenFloor ?? state.floorCursor`) — spec left the source open; ticket 27 may adjust when wiring the seed.
+- **Tests:** `corruptionSeam.test.ts` (9: once-per-ero-beat pass/fail, never on standard slots, kink-matched once, cross-room accumulation, prisoner carries all 5 identity fields, no `matchedKink` field stored, reset proven for all 3 hero fates incl. advanceRaidStep e2e) + legacy-load test in `migrationAndSlots.test.ts` (save without the new fields loads and beats).

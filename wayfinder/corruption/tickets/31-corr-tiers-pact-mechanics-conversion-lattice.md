@@ -2,6 +2,7 @@
 summary: Make CORR_TIERS mechanical — kinkFamily pacts with tier die/resist bonuses, conversion corr clauses + ratchet, predicted deltas on pact buttons
 labels: [wayfinder:task]
 status: open
+blocked-by: [27-capture-seed-formula-corr-tiers-labels](27-capture-seed-formula-corr-tiers-labels.md), [28-nightly-kink-drift-comfort-corr](28-nightly-kink-drift-comfort-corr.md)
 assignee: unclaimed
 ---
 

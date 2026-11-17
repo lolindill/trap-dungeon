@@ -2,7 +2,8 @@
 summary: Give prisoner corr its missing passive loop — nightly kink-matched floor drift and no-pure-recovery comfort jobs in the estate settle
 labels: [wayfinder:task]
 status: open
-assignee: unclaimed
+blocked-by: [27-capture-seed-formula-corr-tiers-labels](27-capture-seed-formula-corr-tiers-labels.md)
+assignee: kevii/agent-w2-28
 ---
 
 # 28: Corruption Seam III — Nightly Kink Drift + No-Pure-Recovery Settle

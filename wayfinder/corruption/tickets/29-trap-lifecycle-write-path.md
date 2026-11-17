@@ -1,8 +1,8 @@
 ---
 summary: Give TrapSlot its first runtime state — status/wear/attunement/attunedKink with raid-loop write rules, disarm counterplay and settlement decay
 labels: [wayfinder:task]
-status: open
-assignee: unclaimed
+status: closed *(2026-11-17 — slot write-path shipped: applyTrapBeat/settleTrapSlot, disarm counterplay, faced-selection skip, migrateFloors pass-through; 247/247 green post-merge)*
+assignee: kevii/agent-w1-29
 ---
 
 # 29: Trap Lifecycle I — Slot Status Write-Path (`wear` / `attunement` / `attunedKink`)
@@ -34,3 +34,13 @@ assignee: unclaimed
 - [ ] Snapshot rewind roundtrip restores post-beat slot state exactly (extend saveLoad test)
 - [ ] Faced-selection skips `spent`/`disarmed` slots (with ticket 30's read path, tested there — here: unit-level selection helper proven)
 - [ ] `vitest run` + `tsc -b && vite build` green
+
+## Resolution
+
+**RESOLVED 2026-11-17** — commit `71ed8bb` on `wayfinder/corr-29`, auto-merged into main clean alongside ticket 26 (one-commit red line: the 29+30 pair ships in the same phase, ticket 30 next); combined main = **247/247 green + build green**.
+
+- **Slot state:** `TrapSlot` optional `status?: TrapSlotStatus ('armed'|'spent'|'disarmed')` / `wear?: number` / `attunement?: number` / `attunedKink?: string` — absent = armed/unworn/unattuned.
+- **Constants:** `TRAP_WEAR` { PER_BEAT: 10, PER_BEAT_KINK: 15, SOFT_GRADE: 60, SPENT: 100, SETTLE_DECAY: 30 } and `TRAP_ATTUNEMENT` { PER_STAGGER: 15, PER_CAPTURE: 15, TIER: 50, ASCENDANT: 85, RATCHET_FLOOR: 50 } exactly per spec.
+- **Write path:** pure `applyTrapBeat(slot, ctx)` (wear per beat ±kink rate → `spent` at 100; attunement +15 on stagger/capture cap 100 with `attunedKink`; disarmer pass margin ≥ 5 → `disarmed`; spent/disarmed receive zero writes) wired in `resolveFloorEncounter` (slots become real copies; `caughtBySlot` set in stagger/captured branches; grit ENDURES intentionally writes no attunement; `[disarmed]` audit note); `settleTrapSlot` in `applyWaveSettlement` (status → armed, wear −30 floor 0, TIER ratchet floor 50); faced-selection gives spent/disarmed weight 0, `selectFacedSlot` picks among active slots only (also fixes a `pickWeighted` roll===0 weight-0-bucket edge) and returns null when nothing is active.
+- **Deviations (3):** (1) `migrateFloors` pass-through of the four ledger fields — the migrator rebuilds slot objects field-by-field and would silently DROP ledger state on every save/load AND snapshot restore, breaking the rewind acceptance; optional-spread pattern, no schemaVersion bump, legacy saves byte-identical (tested). (2) disarm margin 5 as `TRAP_DISARM_MARGIN` in raid.ts (constants instruction was "add exactly" the two blocks). (3) a disarmed slot's own disarm beat still writes wear ("any beat vs the faced slot" rule, table-tested).
+- **Tests:** `trapLifecycle.test.ts` (27: applyTrapBeat table, disarm table incl. narrow/luck/fail/margin-4 non-disarm + disarm-over-spent, selection skips, raid integration — stagger ledger write, in-raid disarm audit, narrow pass, all-spent floor, multi-hero accumulation, settlement 3-wave sim wear 90→60→30→0 / attunement 55+30 hold, ratchet guard) + snapshot rewind roundtrip + legacy-slot migration shape tests in `migrationAndSlots.test.ts`.

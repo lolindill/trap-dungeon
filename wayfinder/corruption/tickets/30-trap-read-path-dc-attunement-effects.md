@@ -2,6 +2,7 @@
 summary: Wire the slot ledger into floor DC and the raid ladder — effectiveGrade wear softening, attunement read effects, repair action, prompt status word
 labels: [wayfinder:task]
 status: open
+blocked-by: [29-trap-lifecycle-write-path](29-trap-lifecycle-write-path.md), [27-capture-seed-formula-corr-tiers-labels](27-capture-seed-formula-corr-tiers-labels.md)
 assignee: unclaimed
 ---
 

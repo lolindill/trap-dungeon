@@ -1,6 +1,6 @@
 # Ero Trap Dungeon Maker — Corruption Seam & Trap Lifecycle Implementation Map
 
-## Destination 📋 DESIGNED (Phase 5.5 + Phase 6 — Phase 5 Landed, Tickets 26-32 Claimable)
+## Destination 🔄 EXECUTING (Phase 5.5 + Phase 6 — 26+29 landed 2026-11-17, 27-32 remain)
 
 Ship the corruption/trainer parameter system synthesized by the 2026-11-16 research + 3-way debate (**Phase 5.5 — Corruption Seam**, tickets 26-28) and the improvised harmonized trap-side ledger + trainer depth lattice (**Phase 6 — Trap Lifecycle & Attunement + Trainer Depth**, tickets 29-32) — with the full `vitest` suite green after every ticket.
 
@@ -20,6 +20,11 @@ Ship the corruption/trainer parameter system synthesized by the 2026-11-16 resea
 - **Schema red line:** optional fields only (Phase 5 `staggered` pattern) — no `HeroStatus` change, no schemaVersion bump, no `status === 'alive'` filter touched; `waveStartSnapshot` covers slot-state rewind for free.
 - **One-commit rule (balance-wiring precedent):** every ledger write lands with its consumer + cap/reset in the same phase; ticket 29 (write-path) + 30 (read-path) merge as a pair so no write-only state reaches `main`.
 - **Numbers are first-pass:** capture seed weights, drift rates, repair pricing, tier bonuses, ending thresholds, and Endless scoring weights are recorded-in-resolution first passes; final tuning rides the balance pass (never inflate difficulty to compensate — balance council red line continues).
+
+## Decisions so far
+
+- [26: corrFeed ledger + capture identity carry](tickets/26-corrfeed-ledger-capture-identity-carry.md): hero `corrFeed` accumulates once per ero-beat (pass/fail) at the beat site; captured prisoners carry kinkKey/persona/skill/weakness; corrFeed resets at the settlement resolution point; `matchedKink` stays a settlement local until ticket 27's seed consumes it.
+- [29: trap lifecycle write-path](tickets/29-trap-lifecycle-write-path.md): TrapSlot gains status/wear/attunement/attunedKink behind pure `applyTrapBeat` + `settleTrapSlot` (decay + TIER ratchet); spent/disarmed slots drop out of faced-selection; `migrateFloors` passes the ledger fields through.
 
 ## Tickets (execution order)
 
