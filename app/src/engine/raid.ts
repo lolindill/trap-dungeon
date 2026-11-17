@@ -442,6 +442,14 @@ export function resolveFloorEncounter(
     // the old death ladder verbatim.
     const beatKey = decideBeat({ die, margin, wasSevere, deathMargin, eroGated });
 
+    // Corruption seam (ticket 26): every beat resolved inside an ero-type slot
+    // feeds the hero ledger — pass AND fail, exactly once per beat (a
+    // kink-matched faced slot still counts once). This is corrFeed's ONLY
+    // writer; the reset rides the settlement resolution point.
+    if (eroGated) {
+      h.corrFeed = (h.corrFeed ?? 0) + 1;
+    }
+
     const afterNotes: string[] = [];
     if (metaMods.labels.length > 0) {
       afterNotes.push(`mods[${metaMods.labels.join(' ')}]`);
@@ -916,6 +924,17 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
         if (h.traits.includes('masochist')) resist -= 20;
         if (h.traits.includes('ascetic')) resist += 10;
         const clampedResist = h.epic ? 100 : clamp(resist, 0, 100);
+        // Corruption seam (ticket 26): matched-kink flag for ticket 27's seed
+        // formula — computed LOCALLY at the capture boundary, nothing stored
+        // on hero or prisoner. facedSlotTypes is the capture floor's slot
+        // types (the capture beat resolved against one of those slots).
+        const captureFloor = state.floors.find(
+          (fl) => fl.floor === (h.fallenFloor ?? state.floorCursor)
+        );
+        const facedSlotTypes = (captureFloor?.slots ?? []).flatMap((s) => s.types);
+        const matchedKink =
+          KINK_TRAP_MAP[h.kinkKey]?.some((t) => facedSlotTypes.includes(t)) ?? false;
+        void matchedKink; // ticket 27 consumes this (+10 seed bonus)
         const corr = (h.traits.includes('lewd') ? 20 : 0) + (h.aroused ? 15 : 0);
         const staminaMax = h.traits.includes('tough') ? 120 : 100;
         const baseStamina = h.cond === 'severe' ? 60 : h.cond === 'injured' ? 80 : 100;
@@ -926,6 +945,14 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
           raceLabel: h.raceLabel,
           classLabel: h.classLabel,
           traits: [...h.traits],
+          // Corruption seam (ticket 26): carry hero identity through the
+          // capture boundary (optional fields only — legacy prisoners
+          // without them stay valid).
+          kinkKey: h.kinkKey,
+          kinkDesc: h.kinkDesc,
+          persona: h.persona,
+          skill: h.skill,
+          weakness: h.weakness,
           capturedWave: state.wave,
           capturedFloor: h.fallenFloor ?? state.floorCursor,
           resist: clampedResist,
@@ -1332,13 +1359,17 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
     // cond no worse than injured (retreated staggered heroes included), and
     // both capture-meter flags reset HERE — the settlement resolution point —
     // not at hero creation (injIgnored/usedLuck are create-time resets and
-    // the wrong pattern for a mid-raid meter).
+    // the wrong pattern for a mid-raid meter). Corruption seam (ticket 26):
+    // corrFeed is a per-raid ledger and clears the same way for ALL heroes
+    // (captured, retreated, staggered-converted) after the settlement above
+    // consumed it.
     party: postState.party.map((h) => {
-      if (!h.staggered && !h.usedStagger) return h;
+      if (!h.staggered && !h.usedStagger && h.corrFeed === undefined) return h;
       const next = { ...h };
       if (next.staggered && next.cond === 'severe') next.cond = 'injured';
       delete next.staggered;
       delete next.usedStagger;
+      delete next.corrFeed;
       return next;
     }),
     expedition: tickExpeditionAftereffects(postState).expedition,

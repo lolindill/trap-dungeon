@@ -30,7 +30,7 @@ import {
   finishSettlementToNextBuild,
   startInvasionPhase,
 } from '../workflow';
-import { advanceRaidStep } from '../raid';
+import { advanceRaidStep, resolveFloorEncounter } from '../raid';
 
 function createMemoryStorage(): Storage {
   const store = new Map<string, string>();
@@ -501,5 +501,98 @@ describe('Ticket 18: legacy expedition aftereffects clamp on load', () => {
 
     const empty = migrateGameState(rawWithAfterEffects([]) as GameState);
     expect(empty.expedition.afterEffects).toEqual([]);
+  });
+});
+
+// Corruption seam (ticket 26): optional-fields-only schema — a save whose
+// heroes/prisoners predate corrFeed / prisoner identity fields loads
+// unchanged and still plays (absent = 0; the ledger starts writing on the
+// first ero-slot beat of the next raid).
+describe('Corruption seam: legacy save without corrFeed / prisoner identity fields (ticket 26)', () => {
+  it('loads a save lacking the new optional fields and plays an ero-slot beat', () => {
+    const raw = JSON.parse(JSON.stringify(createInitialGameState())) as Record<string, unknown>;
+    raw.mode = 'raid';
+    raw.party = [
+      {
+        slot: 1,
+        grade: 'C',
+        status: 'alive',
+        gender: 'female',
+        classKey: 'adventurer',
+        classLabel: 'adventurer',
+        raceKey: 'human',
+        raceLabel: 'human',
+        traits: [],
+        kinkKey: 'praise',
+        kinkDesc: 'praise and gentle words',
+        age: 'late 20s',
+        body: 'athletic',
+        looks: 'plain',
+        persona: 'steady',
+        origin: 'guild dispatch',
+        exp: 'some',
+        marital: 'single',
+        intel: 0,
+        name: 'LegacyHero',
+        appearance: '',
+        outfit: '',
+        personalityText: '',
+        skill: '',
+        weakness: '',
+        kinkText: '',
+        cond: '',
+        ailment: 0,
+        aroused: false,
+        usedLuck: false,
+        injIgnored: false,
+        lastRollText: '',
+        // NOTE: no corrFeed / staggered / usedStagger — legacy hero
+      },
+    ];
+    raw.prisoners = [
+      {
+        pid: 1,
+        name: 'OldCaptive',
+        grade: 'B',
+        raceLabel: 'human',
+        classLabel: 'knight',
+        traits: ['noble'],
+        capturedWave: 1,
+        capturedFloor: 1,
+        resist: 50,
+        corr: 10,
+        // NOTE: no kinkKey/kinkDesc/persona/skill/weakness — legacy prisoner
+      },
+    ];
+
+    const migrated = migrateGameState(raw as unknown as GameState);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.party[0].corrFeed).toBeUndefined();
+    expect(migrated.prisoners[0].kinkKey).toBeUndefined();
+
+    // It plays: give floor 1 an ero slot and resolve a beat with the
+    // migrated legacy hero — the ledger starts from absent (= 0).
+    migrated.floors = migrated.floors.map((f) =>
+      f.floor === 1
+        ? {
+            ...f,
+            slots: [
+              {
+                id: 't0',
+                text: 'Lewd Snare — gimmick',
+                grade: 'SSS' as const,
+                types: ['lewd'],
+                mpInvested: 10,
+              },
+            ],
+          }
+        : f
+    );
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.06); // d20 = 2 → ero fail
+    const res = resolveFloorEncounter(migrated, migrated.floors[0], migrated.party, 1);
+    spy.mockRestore();
+
+    expect(res.audit[0].beat).toBe('captured'); // ero-gated: fail never kills
+    expect(res.party[0].corrFeed).toBe(1);
   });
 });

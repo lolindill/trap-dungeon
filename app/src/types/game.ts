@@ -117,6 +117,11 @@ export interface Hero {
   // reset at the settlement resolution point (applyWaveSettlement).
   staggered?: boolean;
   usedStagger?: boolean;
+  // Corruption seam (ticket 26): count of ero-slot beats absorbed this raid
+  // (0..~40). Written ONLY in the raid room loop; cleared at the settlement
+  // resolution point (applyWaveSettlement) like the flags above. Absent = 0
+  // (legacy-safe).
+  corrFeed?: number;
   lastRollText: string;
   fallenFloor?: number;
   fallenWave?: number;
@@ -218,6 +223,15 @@ export interface Prisoner {
   breeding: PrisonerBreeding | null;
   moleRaidsLeft?: number;
   intel?: number;
+  // Corruption seam (ticket 26): hero identity carried through the capture
+  // boundary (applyWaveSettlement copies these from the captured Hero).
+  // Optional fields only — no schemaVersion bump, legacy saves stay valid
+  // (same pattern as Phase 5's `staggered`).
+  kinkKey?: string;
+  kinkDesc?: string;
+  persona?: string;
+  skill?: string;
+  weakness?: string;
 }
 
 export interface ChronicleEntry {
