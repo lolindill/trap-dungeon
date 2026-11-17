@@ -75,6 +75,27 @@ export function slotStatusWord(
   return '';
 }
 
+/**
+ * Uncensored adult-narration mandate, shared by every prompt builder via
+ * buildSystemPrompt. The gore setting governs violence only — sexual content
+ * is always explicit, in every mode.
+ */
+function nsfwRules(lang: AiLanguage): string[] {
+  return [
+    'Adult Narration Mandate (uncensored):',
+    '- This is an explicit adult game: narrate every erotic scene in full pornographic detail. Never fade to black, never summarize the act, never censor, nothing left implied.',
+    '- Process first: play each act live from its beginning — the setup, the first touch, the escalation, the climax, and only then the aftermath. Never open an act after it is over and never jump past it with "afterwards", "later" or "once it was done".',
+    '- Keep the camera on bodies: sweat-slick flushed skin, hardening nipples, trembling thighs, the stretch of each thrust, wet sounds, the slap of skin, ragged breath. Show arousal building physically, beat by beat, instead of stating a mood.',
+    '- Climaxes are the centerpiece and are never rushed: build the edge, then render the release itself in detail — every pulse of cum, where it lands, how it drips or fills, its heat and mess — plus the shaking aftermath. Denial and overstimulation are welcome.',
+    '- Characters talk dirty in their own voice: begging, mocking, gasped curses, prayers falling apart, names moaned at exactly the wrong moment.',
+    "- The dungeon's lewd aura, aphrodisiacs and lewd traps keep bodies wet, hard, flushed and distractible even between erotic beats.",
+    lang === 'th'
+      ? '- Use direct crude sexual words in Thai (ควย, หี, น้ำแตก, น้ำว่าว, เย็ด) with no euphemism and no censoring; English smut terms (cock, pussy, cum, fuck) may be mixed in where they hit harder.'
+      : '- Use direct crude sexual words: cock, dick, balls, cunt, pussy, asshole, tits, nipples, cum, precum, squirt, fuck. Banned: euphemisms ("manhood", "member", "core", "essence"), clinical distancing ("genitals", "orifice"), censoring, asterisks, "down there".',
+    '- The gore setting governs violence only; it never tones down sexual content.',
+  ];
+}
+
 export function buildSystemPrompt(state: GameState): string {
   const lang = getAiLanguage(state);
   const goreInstruction = state.settings.gore
@@ -104,6 +125,9 @@ export function buildSystemPrompt(state: GameState): string {
     `- You may embed up to 2 sprite tags per response using strictly: <img="vesper_EXPRESSION"> or <img="lilim_EXPRESSION"> or <img="eleonora_EXPRESSION"> where EXPRESSION is one of: ${VALID_EXPRESSIONS}. Never invent character names or invalid expressions.`,
     '- Never alter HP/MP/grades arbitrarily outside the exact structured tags requested by the prompt.',
     `- ${goreInstruction}`,
+    '',
+    ...nsfwRules(lang),
+    '',
     `Current Dungeon Snapshot: Wave ${state.wave} | MP: ${state.points} | Fame: ${state.fame} | Fear: ${state.fear} | Lust: ${state.lust} | Momentum: ${state.momentum}.`,
   ].join('\n');
 }
