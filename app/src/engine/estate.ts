@@ -1,10 +1,5 @@
 import { resolveSceneAsset } from '../data/assetManifest';
-import {
-  CFG,
-  COMFORT_JOBS,
-  CORR_RATCHET_FLOOR,
-  KINK_TRAP_MAP,
-} from '../data/constants';
+import { CFG, COMFORT_JOBS, KINK_TRAP_MAP } from '../data/constants';
 import {
   CRISIS_CFG,
   LANDMARK_DEFS,
@@ -52,9 +47,10 @@ import {
 } from './endings';
 import { processMonsterNightlyCycle } from './monsters';
 import { grantOfficerAffinity } from './officers';
-import { getJobSettleYield } from './prison';
+import { getCorrTierPactBonus, getJobSettleYield } from './prison';
 import { buildNemesisFromHero } from './realm';
 import { clamp, pickOne, pickWeighted, randInt, uid } from './rng';
+import { applyCorrDelta, corrTier } from './tiers';
 
 const SERVANT_MP_BY_GRADE: Record<string, number> = {
   F: 4,
@@ -858,7 +854,8 @@ function applyExploreEffectSpec(
     const p = next.prisoners[targetIdx];
     const updated: Prisoner = {
       ...p,
-      corr: clamp(p.corr + (eff.prisCorr ?? 0), 0, 100),
+      // Ticket 31: corr funnel — crisis/event corr writes honor the ratchet.
+      corr: applyCorrDelta(p, eff.prisCorr ?? 0),
       resist: clamp(p.resist + (eff.prisResist ?? 0), 0, 100),
     };
     const nextPrisoners = [...next.prisoners];
@@ -1599,6 +1596,7 @@ export function applyManagementSettle(
     }
   }
   let kinkDriftCount = 0;
+  let tierDriftCount = 0;
 
   let nextPrisoners: Prisoner[] = state.prisoners.map((p): Prisoner => {
     // Ticket 23: working a job costs stamina (charged before nightly regen —
@@ -1618,6 +1616,14 @@ export function applyManagementSettle(
     const kinkTypes = p.kinkKey ? KINK_TRAP_MAP[p.kinkKey] : undefined;
     const kinkDrift = kinkTypes?.some((t) => installedTrapTypes.has(t)) ? 1 : 0;
     if (kinkDrift > 0) kinkDriftCount++;
+    // Ticket 31: Complicit kink-matched captives drift +1 harder — the tier
+    // table's "nightly corr drift +1" joins this same loop, gated on the
+    // ticket 28 floor match (kink-matched Complicit prisoners only).
+    const tierDrift =
+      kinkDrift > 0 && corrTier(p.corr).key === 'complicit'
+        ? getCorrTierPactBonus(p.corr).drift
+        : 0;
+    if (tierDrift > 0) tierDriftCount++;
     // Ticket 28: DoL no-pure-recovery rule — comfort IS corruption. Spa-facing
     // / comfort-adjacent jobs tick corr +1 per settle (no resist change).
     const comfortTick = p.job && COMFORT_JOBS.includes(p.job) ? 1 : 0;
@@ -1632,18 +1638,12 @@ export function applyManagementSettle(
       100
     );
     const healInj = spaLv >= 2 && p.cond === 'injured' ? '' : p.cond;
-    const nextCorr = clamp(
-      p.corr + (delta?.corr ?? 0) + kinkDrift + comfortTick,
-      0,
-      100
-    );
-    // Ticket 28: corr ratchet floor clamp site (TiTS ratchet). A no-op until
-    // ticket 31 introduces paths that could lower a Hollowed prisoner — corr
-    // can only rise today — but the guard lives here so no future write
-    // settles a corr >= CORR_RATCHET_FLOOR back below the floor.
-    const ratchetCorr = Math.max(
-      nextCorr,
-      nextCorr < CORR_RATCHET_FLOOR ? nextCorr : CORR_RATCHET_FLOOR
+    // Ticket 31: the whole corr write funnels through applyCorrDelta — the
+    // ONE ratchet site (TiTS floor: a Hollowed prisoner can never settle
+    // back below CORR_RATCHET_FLOOR, absorbing ticket 28's clamp site).
+    const nextCorr = applyCorrDelta(
+      p,
+      (delta?.corr ?? 0) + kinkDrift + tierDrift + comfortTick
     );
     return {
       ...p,
@@ -1653,7 +1653,7 @@ export function applyManagementSettle(
       pleasure: clamp(p.pleasure + (delta?.pleasure ?? 0), 0, 100),
       terror: clamp(p.terror + (delta?.terror ?? 0), 0, 100),
       shame: clamp(p.shame + (delta?.shame ?? 0), 0, 100),
-      corr: ratchetCorr,
+      corr: nextCorr,
       cond: healInj as Prisoner['cond'],
     };
   });
@@ -1701,15 +1701,25 @@ export function applyManagementSettle(
 
   // Ticket 28: ledger-truth journal row (ticket 23 precedent) — appended when
   // the nightly kink-floor drift fired for at least one prisoner this settle.
-  const driftLines =
-    kinkDriftCount > 0
+  const driftLines = [
+    ...(kinkDriftCount > 0
       ? [
           {
             label: 'Nightly Kink-Floor Drift',
             deltaText: `+corr (kink floor) ×${kinkDriftCount}`,
           },
         ]
-      : [];
+      : []),
+    // Ticket 31: the Complicit tier's extra drift gets its own truth row.
+    ...(tierDriftCount > 0
+      ? [
+          {
+            label: 'Complicit Tier Drift',
+            deltaText: `+corr (tier) ×${tierDriftCount}`,
+          },
+        ]
+      : []),
+  ];
 
   // Pet owner affinity gain
   let working: GameState = {

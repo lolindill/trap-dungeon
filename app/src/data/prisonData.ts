@@ -37,6 +37,14 @@ export interface PrisonPactDef {
     mpGain?: number;
     foodGain?: number;
   };
+  /**
+   * Ticket 31 (trainer depth): kink-family keys drawn from the KINK_TRAP_MAP
+   * vocabulary. A prisoner whose kinkKey maps (via shared trap types) into one
+   * of these families counts as kink-matched — the CORR_TIERS bonuses (die /
+   * resist / effect) apply to this pact. Absent = the pact never kink-matches
+   * and always resolves at baseline.
+   */
+  kinkFamily?: string[];
   assetKey: string;
   summary: string;
   resultProse: string;
@@ -86,6 +94,16 @@ export interface PrisonConversionDef {
   reqSummary: string;
   effectSummary: string;
   assetKey: string;
+  /**
+   * Ticket 31 (conversion lattice): optional corr AND-clauses. `min` is the
+   * primary corr floor; `alt` is the CoC-style alt route — corr >= alt.min
+   * AND every alt.marks entry at its mark level. canConvertPrisoner reads
+   * this data so gate numbers live next to the conversion's display strings.
+   */
+  corrReq?: {
+    min?: number;
+    alt?: { min: number; marks: [keyof PrisonerMarks, number][] };
+  };
 }
 
 export interface BuyerDef {
@@ -230,6 +248,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 5,
     staminaCost: 0,
     effects: { pleasure: [5, 5], resist: [-5, -5] },
+    kinkFamily: ['praise'],
     assetKey: 'dk_pa_reward',
     summary: '5 MP, Pleasure +5, Resist -5',
     resultProse: 'rewarded gently, confused by how comforting obedience felt',
@@ -255,6 +274,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 5,
     effects: { corr: [6, 6] },
+    kinkFamily: ['worship'],
     req: { mark: ['obey', 1], needsOfficerGift: true },
     assetKey: 'dk_pa_gift',
     summary: 'Obey 1 · Corr +6, Officer Aff +2',
@@ -268,6 +288,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 0,
     effects: { shame: [4, 4] },
+    kinkFamily: ['uniform'],
     req: { facility: 'market' },
     assetKey: 'dk_pa_dress',
     summary: 'Market · Shame +4, Next Sale +20%',
@@ -294,6 +315,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 15,
     effects: { pleasure: [5, 5] },
+    kinkFamily: ['service'],
     req: { facility: 'brothel', mark: ['pleasure', 1] },
     assetKey: 'dk_pa_work',
     summary: 'Brothel + Pleas 1 · +15% Ransom MP, Lust +3',
@@ -322,6 +344,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 5,
     effects: { pleasure: [8, 12], resist: [-2, -2] },
+    kinkFamily: ['praise'],
     assetKey: 'dk_pa_care',
     summary: 'Pleasure +8..12, Resist -2',
     resultProse: 'left trembling, flushed and aching for more than they admit',
@@ -334,6 +357,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 10,
     effects: { pleasure: [10, 16], corr: [4, 4], resist: [-3, -3] },
+    kinkFamily: ['edging', 'service'],
     req: { facility: 'smithy' },
     assetKey: 'dk_pa_tool',
     summary: 'Smithy · Pleas +10..16, Corr +4, Resist -3',
@@ -347,6 +371,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 5,
     effects: { resist: [-6, -6], terror: [4, 4], shame: [3, 3] },
+    kinkFamily: ['bondage', 'chastity'],
     assetKey: 'dk_pa_bind',
     summary: 'Resist -6, Terror +4, Shame +3',
     resultProse: 'left bound and helpless in the cell while defiance drains away',
@@ -359,6 +384,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 5,
     staminaCost: 5,
     effects: { pleasure: [15, 15], resist: [-4, -4] },
+    kinkFamily: ['drugs'],
     assetKey: 'dk_pa_drug',
     summary: '5 MP · Pleas +15, Resist -4, Next Pact ×1.3',
     resultProse: 'burning with drugged heat, unable to focus on anything else',
@@ -371,6 +397,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 12,
     effects: { pleasure: [8, 8], shame: [6, 6] },
+    kinkFamily: ['lactation'],
     req: { facility: 'dairy' },
     assetKey: 'dk_pa_milk',
     summary: 'Dairy · Pleas +8, Shame +6, Food +3, +5 MP',
@@ -384,6 +411,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 10,
     effects: {},
+    kinkFamily: ['worship'],
     req: { needsOfficerDuo: true },
     assetKey: 'dk_duo_v',
     summary: 'V/L Stage 2+ · Officer Aff +1 & heavy conditioning',
@@ -399,6 +427,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 5,
     effects: { shame: [10, 15], corr: [4, 4] },
+    kinkFamily: ['exhibition'],
     assetKey: 'dk_pa_walk',
     summary: 'Shame +10..15, Corr +4, Renown -1, Lust +3',
     resultProse: 'paraded exposed through the corridors under leering eyes',
@@ -411,6 +440,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 5,
     effects: { shame: [15, 15] },
+    kinkFamily: ['exhibition', 'public'],
     req: { oncePerDay: true },
     assetKey: 'dk_pa_display',
     summary: '1/day · Shame +15, App +2, Renown -2, Lust +6',
@@ -424,6 +454,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 8,
     effects: { shame: [8, 8], pleasure: [6, 6], resist: [-3, -3] },
+    kinkFamily: ['group'],
     req: { needsPair: true },
     assetKey: 'dk_pa_pair',
     summary: 'Needs 2nd idle captive · Both Shame +8, Pleas +6, Res -3',
@@ -437,6 +468,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 15,
     effects: { shame: [12, 12], corr: [6, 6] },
+    kinkFamily: ['public', 'service', 'group'],
     req: { facility: 'watch', mark: ['shame', 1] },
     assetKey: 'dk_pa_public',
     summary: 'Watch + Shame 1 · Shame +12, Corr +6, Order +2, App +1',
@@ -451,6 +483,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     staminaCost: 10,
     isFearVerb: true,
     effects: { resist: [-8, -4], terror: [6, 6] },
+    kinkFamily: ['pain', 'rough'],
     assetKey: 'dk_pa_whip',
     summary: 'Resist -4..-8, Terror +6 (Exhaustion death risk if Stam<10)',
     resultProse: 'welted and sobbing as defiance cracks under the lash',
@@ -464,6 +497,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     staminaCost: 0,
     isFearVerb: true,
     effects: { resist: [-4, -4], terror: [8, 8] },
+    kinkFamily: ['degradation'],
     req: { minPrisoners: 2 },
     assetKey: 'dk_pa_threat',
     summary: '2+ Captives · Resist -4, Terror +8 (0 Stamina)',
@@ -478,6 +512,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     staminaCost: 15,
     isFearVerb: true,
     effects: { terror: [10, 10] },
+    kinkFamily: ['pain'],
     assetKey: 'dk_pa_tort',
     summary: 'Resist -(11..20), Terror +10, Fear +3 (25% Injury/Severe->Death)',
     resultProse: 'broken down in the torture rack as fear sinks deep',
@@ -492,6 +527,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 10,
     effects: { terror: [10, 10], shame: [8, 8], resist: [-6, -6] },
+    kinkFamily: ['pain'],
     req: { notFlag: 'branded' },
     assetKey: 'dk_dark_brand',
     summary: '1/captive · Terror +10, Shame +8, Res -6, Brand (+5% Ransom), Fear +2',
@@ -505,6 +541,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 20,
     effects: { resist: [-10, -8], terror: [5, 5] },
+    kinkFamily: ['degradation'],
     assetKey: 'dk_dark_starve',
     summary: 'Resist -8..-10, Terror +5, Food +1',
     resultProse: 'starved and shaking, begging for scraps from the keeper',
@@ -517,6 +554,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 15,
     effects: { pleasure: [15, 20], shame: [8, 8], corr: [6, 6] },
+    kinkFamily: ['tentacle'],
     req: { facility: 'beastpen' },
     assetKey: 'dk_dark_tent',
     summary: 'Beast Pen · Pleas +15..20, Shame +8, Corr +6, Lust +4',
@@ -530,6 +568,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 8,
     effects: { pleasure: [10, 12], shame: [10, 10] },
+    kinkFamily: ['succubus'],
     req: { facility: 'bath' },
     assetKey: 'dk_dark_slime',
     summary: 'Bath · Pleas +10..12, Shame +10, Lust +2, App +1',
@@ -543,6 +582,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 10,
     staminaCost: 10,
     effects: { pleasure: [12, 12], corr: [10, 10] },
+    kinkFamily: ['succubus'],
     req: { facility: 'shrine', facilityLv: 2, notFlag: 'crest' },
     assetKey: 'dk_dark_crest',
     summary: '10 MP · Shrine 2 · Pleas +12, Corr +10, Lewd Crest (+20% LewdMart)',
@@ -556,6 +596,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 10,
     staminaCost: 5,
     effects: { resist: [-12, -12] },
+    kinkFamily: ['hypnosis'],
     req: { facility: 'shrine', facilityLv: 2 },
     assetKey: 'dk_dark_hypno',
     summary: '10 MP · Shrine 2 · Resist -12, 30% +1 Intel (Res 0 -> Broken)',
@@ -569,6 +610,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 5,
     staminaCost: 12,
     effects: { pleasure: [10, 10], shame: [12, 12] },
+    kinkFamily: ['petplay', 'lactation', 'breeding'],
     req: { facility: 'dairy', facilityLv: 2, notFlag: 'cow' },
     assetKey: 'dk_dark_cow',
     summary: '5 MP · Dairy 2 · Pleas +10, Shame +12, Food +2, Cow Tag',
@@ -583,6 +625,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     staminaCost: 15,
     isFearVerb: true,
     effects: { terror: [12, 12], resist: [-8, -8] },
+    kinkFamily: ['degradation'],
     req: { facility: 'torture' },
     assetKey: 'dk_dark_confess',
     summary: 'Torture · Terror +12, Resist -8, 40% +1 Intel',
@@ -596,6 +639,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 5,
     effects: { shame: [15, 15], resist: [-10, -10] },
+    kinkFamily: ['degradation'],
     req: { mark: ['obey', 2], notFlag: 'renamed' },
     assetKey: 'dk_dark_rename',
     summary: 'Obey 2 · Shame +15, Res -10, No Sale Escape Risk',
@@ -609,6 +653,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 15,
     effects: { terror: [8, 8] },
+    kinkFamily: ['rough'],
     req: { facility: 'arena', needsPair: true },
     assetKey: 'dk_dark_duel',
     summary: 'Arena + 2nd Captive · Both Terror +8, +10 MP, Renown +1',
@@ -624,6 +669,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 35,
     effects: { resist: [-20, -20], pleasure: [10, 10], corr: [5, 5] },
+    kinkFamily: ['edging'],
     harsh: {
       baseDie: 0.05,
       en: 'kept awake and trained through the entire night without rest',
@@ -640,6 +686,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 30,
     effects: { resist: [-18, -18], shame: [20, 20] },
+    kinkFamily: ['public', 'exhibition'],
     harsh: {
       baseDie: 0.05,
       en: "locked in the square's pillory from dawn to dusk in the cold",
@@ -657,6 +704,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     staminaCost: 35,
     isFearVerb: true,
     effects: { resist: [-25, -25], terror: [15, 15] },
+    kinkFamily: ['pain'],
     harsh: {
       baseDie: 0.09,
       en: 'half-drowned again and again until begging for mercy',
@@ -673,6 +721,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 10,
     staminaCost: 25,
     effects: { resist: [-20, -20], corr: [5, 5] },
+    kinkFamily: ['drugs'],
     harsh: {
       baseDie: 0.06,
       en: "given an addictive draught, then denied it until craving the dungeon's touch",
@@ -690,6 +739,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 0,
     staminaCost: 45,
     effects: { resist: [-18, -18] },
+    kinkFamily: ['rough'],
     harsh: {
       baseDie: 0.07,
       en: 'worked to collapse in the abyssal mine',
@@ -708,6 +758,7 @@ export const PRISON_PACTS: readonly PrisonPactDef[] = [
     mpCost: 10,
     staminaCost: 40,
     effects: { resist: [-30, -30], corr: [10, 10], terror: [10, 10] },
+    kinkFamily: ['worship'],
     req: { facility: 'shrine' },
     harsh: {
       baseDie: 0.11,
@@ -1128,6 +1179,14 @@ export const PRISON_JOB_MAP: Record<string, PrisonJobDef> = Object.fromEntries(
   PRISON_JOBS.map((j) => [j.key, j])
 );
 
+// Ticket 31 (trainer depth): the kink families each estate job prices up. A
+// Complicit-tier prisoner whose kinkKey maps (shared trap types) into the
+// job's family yields ×1.25 from the brothel/dairy row of the tier table.
+export const JOB_KINK_FAMILIES: Record<string, string[]> = {
+  brothel: ['praise', 'degradation', 'service', 'edging', 'worship', 'group', 'succubus'],
+  dairy: ['lactation', 'breeding'],
+};
+
 export const PRISON_CONVERSIONS: readonly PrisonConversionDef[] = [
   {
     key: 'guard',
@@ -1141,9 +1200,15 @@ export const PRISON_CONVERSIONS: readonly PrisonConversionDef[] = [
     key: 'servant',
     label: 'Dungeon Servant',
     maxCapLabel: 'Cap 3',
-    reqSummary: 'Corruption >= 70',
+    reqSummary: 'Corruption >= 70, or >= 60 + Pleasure Mark 3 + Obey Mark 2',
     effectSummary: 'Passive MP by grade (+4..+30 MP) + Lust +2/settle',
     assetKey: 'dk_pr_servant',
+    // Ticket 31 conversion lattice: original corr >= 70 gate stays; the alt
+    // route adds corr >= 60 AND Pleasure 3 + Obey 2 (CoC AND-gate ruling).
+    corrReq: {
+      min: 70,
+      alt: { min: 60, marks: [['pleasure', 3], ['obey', 2]] },
+    },
   },
   {
     key: 'pet',
