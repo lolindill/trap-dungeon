@@ -1,7 +1,7 @@
 ---
 summary: Give prisoner corr its missing passive loop — nightly kink-matched floor drift and no-pure-recovery comfort jobs in the estate settle
 labels: [wayfinder:task]
-status: open
+status: closed *(2026-11-17 — nightly kink-floor drift (corr+1/resist−1) + COMFORT_JOBS [bath,tavern] corr tick + ratchet clamp site landed in the existing settle loop; 272/272 green post-merge)*
 blocked-by: [27-capture-seed-formula-corr-tiers-labels](27-capture-seed-formula-corr-tiers-labels.md)
 assignee: kevii/agent-w2-28
 ---
@@ -28,3 +28,14 @@ assignee: kevii/agent-w2-28
 - [ ] Comfort-job corr tick proven; non-comfort jobs unchanged (job yield parity test from ticket 23 stays green)
 - [ ] Corr never exceeds 100; ratchet clamp site proven by direct unit test
 - [ ] 192+ existing tests green; `vitest run` + `tsc -b && vite build` green
+
+## Resolution
+
+**RESOLVED 2026-11-17** — commit `2dcc32c` on `wayfinder/corr-28`, merged to main (dedupe `351bcff`); main = **272/272 green + build green**.
+
+- **Drift:** inside `applyManagementSettle`'s existing per-prisoner map only (no second loop) — `installedTrapTypes` Set precomputed from `state.floors` once; kink-floor drift `corr +1 / resist −1` fires when `KINK_TRAP_MAP[p.kinkKey]` intersects the installed types; kink-less/legacy prisoners drift zero.
+- **Comfort jobs:** `COMFORT_JOBS = ['bath', 'tavern']` — bath (Bathhouse Attendant, the only true spa-facing job: pleasure +3, no corr) + tavern (Tavern Server, hospitality: pleasure +4, no corr). Jobs already carrying corr in prisonerDelta (brothel/manor/toilet/barracks/lure/trusty/breeder) deliberately excluded (no double-dipping); dairy/tasting/model are extraction/humiliation, not comfort.
+- **Ratchet clamp site:** spec formula landed in the same settle map — no-op today, guards ticket 31's lowering paths; invariant-tested.
+- **Ledger:** row `Nightly Kink-Floor Drift → +corr (kink floor) ×N` on both return sites, following ticket 23's `jobRiskNotes` precedent (applied ledger only, not preview).
+- **Deviations (2):** (1) drift does NOT filter slot `status` — spent/disarmed slots still count as installed (spec said "installed floors' slot types" literally); one-line fix in the `installedTrapTypes` loop if the judge wants disarmed slots to stop biting corr. (2) `EstatePanel.tsx` untouched — the drift row flows through the existing M.SETTLE DETERMINISTIC LEDGER lines, satisfying "no new UI".
+- **Tests:** `estateKinkDrift.test.ts` (19: drift gate, determinism table floor×kink, comfort tick, cap-100 + ratchet invariant sweep); ticket 23 job-yield parity stays green.

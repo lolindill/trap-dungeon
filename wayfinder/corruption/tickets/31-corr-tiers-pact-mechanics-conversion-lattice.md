@@ -1,9 +1,9 @@
 ---
 summary: Make CORR_TIERS mechanical — kinkFamily pacts with tier die/resist bonuses, conversion corr clauses + ratchet, predicted deltas on pact buttons
 labels: [wayfinder:task]
-status: open
+status: closed *(2026-11-17 — tiers mechanical: kinkFamily pacts with tier die/resist/yield/premium table, conversion corr AND-clauses, applyCorrDelta single ratchet point, predicted deltas on pact buttons; 320/320 green post-merge)*
 blocked-by: [27-capture-seed-formula-corr-tiers-labels](27-capture-seed-formula-corr-tiers-labels.md), [28-nightly-kink-drift-comfort-corr](28-nightly-kink-drift-comfort-corr.md)
-assignee: unclaimed
+assignee: kevii/agent-w3-31
 ---
 
 # 31: Trainer Depth — `CORR_TIERS` Pact Mechanics + Conversion Lattice
@@ -34,3 +34,15 @@ assignee: unclaimed
 - [ ] Ratchet invariant: no sequence of writes can put a Hollowed prisoner below 85 (property-style test over the helper)
 - [ ] Predicted deltas match actual resolution byte-for-byte on a sampled pact set (parity test like ticket 23's)
 - [ ] `vitest run` + `tsc -b && vite build` green
+
+## Resolution
+
+**RESOLVED 2026-11-17** — commit `992eb11` on `wayfinder/corr-31`, merged clean into main; combined main = **320/320 green + build green**.
+
+- **Data:** `PrisonPactDef.kinkFamily?: string[]` (33 pacts assigned), `PrisonConversionDef.corrReq?` (servant min 70 / alt-route 60 + pleasure3 + obey2, reqSummary updated), `JOB_KINK_FAMILIES` (brothel/dairy). Vocabulary = the 22 `KINK_TRAP_MAP` keys; `feet`/`vampire` have no pact home, `toys`/`scent` unmapped by design.
+- **Tier mechanics (prison.ts):** kink-family match = shared trap type via `KINK_TRAP_MAP`; `TIER_PACT_BONUS` + `getCorrTierPactBonus` power Wavering (harsh die +2, resist ×0.9) / Complicit (die +4, resist ×0.8, nightly drift +1, brothel+dairy yield ×1.25) / Devoted (effect +50%, ransom premium ×1.5); die bonus wired in `getHarshDeathChance`; premium in `calculateRansom`; yields in `getJobSettleYield` (+ preview line). Shared `computePactStatEffects` powers both execution and exported `predictPactDeltas`.
+- **Conversion lattice:** servant corr AND-clause live; hired stays `obey3 or corr ≥ 80`; old gates unchanged for kink-less prisoners.
+- **Single ratchet point:** `applyCorrDelta` lives in `engine/tiers.ts` (dependency-light: constants + `Pick<Prisoner,'corr'>`; pure) — absorbs ticket 28's estate clamp site and funnels pact deltas, ptort masochist +10, conversion writes, drift, and the `prisCorr` crisis write. The Hollowed 85 floor is now enforced in exactly one place.
+- **UI:** PrisonPanel pact buttons render `Predicted: <deltas> · Kink match: …` from `predictPactDeltas` (same math as execution; pduo passes the picked officer).
+- **Interpretation decisions (5, flagged in code comments):** (1) Hollowed = Devoted numeric treatment + reqs waiver — literal-minimal would make Hollowed train WEAKER than Devoted; the killer-spec reads as additive tiers. (2) `resist ×0.9/×0.8` = post-pact multiplier on the resulting resist stat when the pact carried a resist effect (suppressed when it rounds to no change). (3) "pact effect +50%" multiplies positive deltas only. (4) Premium gated on Devoted/Hollowed + a mapped kinkKey. (5) Conversion ratchet check = conversion write funnels `applyCorrDelta(·, 0)` — floor-safe for any future corr clause.
+- **Tests:** `corrPacts.test.ts` (23: 5×2 tier matrix exact, conversion gates at 59/60 + 79/80, ratchet property sweep, predicted-delta parity byte-for-byte across 4 tier/kink configs under mocked RNG — sample excludes pint/ptort whose resist deltas are random resolve-time branches); estateKinkDrift invariant sweep updated to Complicit +3/night (ticket 31's own mechanic).

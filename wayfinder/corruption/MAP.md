@@ -1,6 +1,6 @@
 # Ero Trap Dungeon Maker — Corruption Seam & Trap Lifecycle Implementation Map
 
-## Destination 🔄 EXECUTING (Phase 5.5 + Phase 6 — 26+29 landed 2026-11-17, 27-32 remain)
+## Destination ✅ COMPLETED (2026-11-17) — Corruption Seam & Trap Lifecycle shipped via tickets 26-32, 338/338 green + build green
 
 Ship the corruption/trainer parameter system synthesized by the 2026-11-16 research + 3-way debate (**Phase 5.5 — Corruption Seam**, tickets 26-28) and the improvised harmonized trap-side ledger + trainer depth lattice (**Phase 6 — Trap Lifecycle & Attunement + Trainer Depth**, tickets 29-32) — with the full `vitest` suite green after every ticket.
 
@@ -25,6 +25,11 @@ Ship the corruption/trainer parameter system synthesized by the 2026-11-16 resea
 
 - [26: corrFeed ledger + capture identity carry](tickets/26-corrfeed-ledger-capture-identity-carry.md): hero `corrFeed` accumulates once per ero-beat (pass/fail) at the beat site; captured prisoners carry kinkKey/persona/skill/weakness; corrFeed resets at the settlement resolution point; `matchedKink` stays a settlement local until ticket 27's seed consumes it.
 - [29: trap lifecycle write-path](tickets/29-trap-lifecycle-write-path.md): TrapSlot gains status/wear/attunement/attunedKink behind pure `applyTrapBeat` + `settleTrapSlot` (decay + TIER ratchet); spent/disarmed slots drop out of faced-selection; `migrateFloors` passes the ledger fields through.
+- [27: capture seed formula + CORR_TIERS labels](tickets/27-capture-seed-formula-corr-tiers-labels.md): seed = clamp(5 + lewd20 + aroused15 + corrFeed×8 + matchedKink+10, 0, 45) — floor 5, max 45 (Wavering, never a free win); `CORR_TIERS` + pure `corrTier` in `engine/tiers.ts`; tier words on roster prompt + PrisonPanel chips.
+- [28: nightly kink drift + comfort-corr](tickets/28-nightly-kink-drift-comfort-corr.md): kink-floor drift corr+1/resist−1 + `COMFORT_JOBS ['bath','tavern']` corr+1 inside the existing settle loop; ratchet clamp site landed (no-op until 31); ledger row per ticket-23 precedent.
+- [30: trap read path + repair](tickets/30-trap-read-path-dc-attunement-effects.md): `effectiveGrade` wear softening + spent=0 bonus; attunement ≥50 mods−1 / ≥85 corrFeed pass-through + DC+1; max-weight attuned selection; Repair All 1 AP + 3 MP/slot; prep-intel disarm (1 intel, entry floor, once per prep); prompt status words.
+- [31: tier pact mechanics + conversion lattice](tickets/31-corr-tiers-pact-mechanics-conversion-lattice.md): kinkFamily pacts with the 5-tier die/resist/yield/premium table; servant corr AND-clause; `applyCorrDelta` in `engine/tiers.ts` = the single Hollowed-85 ratchet point (absorbed ticket 28's clamp); predicted deltas on pact buttons.
+- [32: endings/Endless hooks + resolve-roll triage](tickets/32-endings-endless-hooks-resolve-roll-triage.md): dominion ending at attunement ≥ 300 + 5×corr-100 (Gallery-visible); corr tint at avg 70/30; Endless rank × (1 + avgCorr/200 + attunement/400); in-raid resolve roll triaged **CUT** with rationale recorded.
 
 ## Tickets (execution order)
 
@@ -40,10 +45,7 @@ Ship the corruption/trainer parameter system synthesized by the 2026-11-16 resea
 
 ## Not yet specified (deferred fog)
 
-- **Prep-intel disarm UX depth** (ticket 30): which prep slot it consumes vs existing intel actions — decide at wiring.
-- **Attunement display in FloorBoard** (beyond the prompt word): mini-badge per slot — defer to a UI pass after mechanics prove out.
-- **Monster/attunement interplay** (M6-adjacent): reapers/ambushers interacting with spent/disarmed slots — Batch-4 style fog, needs its own design pass.
-- **Desire-seek weight ×3** (KP full targetability on raid-side selection): only if a future meter graduates; judge kept raid-side derived-only.
+*(empty at close — remaining deferred items were ruled out of scope below as follow-on efforts.)*
 
 ## Out of scope
 
@@ -51,3 +53,4 @@ Ship the corruption/trainer parameter system synthesized by the 2026-11-16 resea
 - Explicit prose anywhere in mechanics, prompts defaults, or tests — LLM narration stays provider-side.
 - Difficulty inflation as compensation for capture-seed rebalance (ticket 27 records the delta instead).
 - Audio/PWA/packaging; RisuAI compat; LLM provider work.
+- Post-map follow-on efforts, ruled beyond this destination at close (2026-11-17): FloorBoard attunement mini-badge (own UI pass), monster × spent/disarmed-slot interplay (M6-adjacent, own design pass), desire-seek weight ×3 (only if corrFeed ever graduates).
