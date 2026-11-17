@@ -574,3 +574,17 @@ export const OPENING_TEXT = `Blue mana pulses through a seven-floor labyrinth. D
 Above ground, word of a newly awakened labyrinth is already spreading toward the Hero Guild. Beside the Control Room's scrying crystals, Lilim flips open a fresh ledger with a wicked grin while Vesper adjusts her cuffs and checks the Core's mana reserves.
 
 Use **Build** to install traps on your floors—or craft and save reusable **Trap Shortcuts** in your Blueprint Library for instant deployment!`;
+
+// Ticket 28 (corruption seam III): spa-facing / comfort-adjacent prison jobs
+// among the 24 PRISON_JOBS. DoL no-pure-recovery rule — comfort IS corruption:
+// working one of these feels good enough to tick corr +1 per settle even
+// though its prisonerDelta carries no corr. Jobs that already carry corr in
+// their prisonerDelta (brothel, manor, toilet, barracks, lure, trusty,
+// breeder) are deliberately NOT listed (no double-dipping).
+export const COMFORT_JOBS: readonly string[] = ['bath', 'tavern'];
+
+// Ticket 28 (corruption seam III): corr ratchet floor (TiTS ratchet, tier 85
+// per MAP consensus). Clamp site lives in applyManagementSettle's per-prisoner
+// settle map; ticket 31 owns the lowering paths it guards — a Hollowed
+// prisoner never settles back below the floor.
+export const CORR_RATCHET_FLOOR = 85; // dedupe with ticket 27 on merge
