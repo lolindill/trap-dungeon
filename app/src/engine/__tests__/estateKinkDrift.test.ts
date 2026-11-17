@@ -247,7 +247,10 @@ describe('Ticket 28: corr cap + ratchet clamp site', () => {
       );
       const res = settle(state);
       const corr = res.state.prisoners[0].corr;
-      expect(corr).toBe(Math.min(start + 2, 100)); // +1 drift +1 comfort, capped at 100
+      // Ticket 31: Complicit (50-69) kink-matched captives drift +1 harder —
+      // +1 kink-floor drift +1 tier drift +1 comfort, capped at 100.
+      const tierTick = start >= 50 && start <= 69 ? 1 : 0;
+      expect(corr).toBe(Math.min(start + 2 + tierTick, 100));
       expect(corr).toBeLessThanOrEqual(100);
       if (start >= CORR_RATCHET_FLOOR) {
         expect(corr).toBeGreaterThanOrEqual(CORR_RATCHET_FLOOR); // ratchet holds

@@ -1,10 +1,11 @@
-import { CFG } from '../data/constants';
+import { CFG, KINK_TRAP_MAP } from '../data/constants';
 import { CRISIS_CFG } from '../data/realmData';
 import {
   APTITUDE_MULT,
   BUYERS,
   EXEC_CFG,
   HARSH_CFG,
+  JOB_KINK_FAMILIES,
   MARK_LABELS,
   MARK_THRESHOLDS,
   MOLE_CFG,
@@ -31,7 +32,7 @@ import type {
 } from '../types/game';
 import { appendDayLogLine, getOfficerStageForAff, isDayPhase, spendDayAp } from './dayLoop';
 import { clamp, randInt } from './rng';
-import { corrTier } from './tiers';
+import { applyCorrDelta, corrTier } from './tiers';
 
 export interface Pronouns {
   subject: 'he' | 'she';
@@ -248,6 +249,105 @@ export function getResistMultiplier(state: GameState, pactId: string): number {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Ticket 31 (trainer depth): CORR_TIERS pact mechanics — the tier table stops
+// being labels. Kink-match rule: the prisoner's kinkKey maps via
+// KINK_TRAP_MAP to trap types; a pact's kinkFamily entries map the same way,
+// and a family "matches" when it shares at least one trap type with the
+// prisoner's kink (praise/degradation/service/… all map to lewd, so they are
+// one family; bondage/chastity/exhibition share bind, etc.). Kink-matched
+// pacts read the CORR_TIERS table below; everything else resolves at
+// baseline (Resistant = full resist).
+// ---------------------------------------------------------------------------
+
+/** Bonus struct for ONE tier, applied only to kink-matched pacts. */
+export interface CorrTierPactBonus {
+  /** Harsh-pact death die bonus (added to getHarshDeathChance). */
+  dieBonus: number;
+  /** Post-pact resist multiplier when the pact carried a resist effect. */
+  resistMult: number;
+  /** Multiplier on positive pact stat deltas (pleasure/shame/terror/corr). */
+  effectMult: number;
+  /** Ransom buyer premium multiplier (calculateRansom, buyerId sales). */
+  premiumMult: number;
+  /** Brothel/dairy job output multiplier (getJobSettleYield). */
+  yieldMult: number;
+  /** Extra nightly corr drift inside ticket 28's estate settle loop. */
+  drift: number;
+  /** Hollowed waiver: every kinkFamily pact counts as matched. */
+  waiveKinkFamily: boolean;
+}
+
+const BASE_TIER_BONUS: CorrTierPactBonus = {
+  dieBonus: 0,
+  resistMult: 1,
+  effectMult: 1,
+  premiumMult: 1,
+  yieldMult: 1,
+  drift: 0,
+  waiveKinkFamily: false,
+};
+
+/**
+ * Single source of truth for the ticket 31 tier table (first-pass numbers,
+ * recorded-in-resolution per the balance-council red line):
+ * - Wavering 25-49: harsh die +2, resist ×0.9
+ * - Complicit 50-69: die +4, resist ×0.8; nightly drift +1; brothel/dairy ×1.25
+ * - Devoted 70-84: pact effect +50%; ransom buyer premium ×1.5
+ * - Hollowed 85-100: all kinkFamily reqs waived (every kinkFamily pact reads
+ *   as matched) and — so a top-tier captive never trains weaker than a
+ *   Devoted one — Hollowed keeps the Devoted effect/premium treatment.
+ */
+const TIER_PACT_BONUS: Record<string, CorrTierPactBonus> = {
+  resistant: { ...BASE_TIER_BONUS },
+  wavering: { ...BASE_TIER_BONUS, dieBonus: 0.02, resistMult: 0.9 },
+  complicit: {
+    ...BASE_TIER_BONUS,
+    dieBonus: 0.04,
+    resistMult: 0.8,
+    yieldMult: 1.25,
+    drift: 1,
+  },
+  devoted: { ...BASE_TIER_BONUS, effectMult: 1.5, premiumMult: 1.5 },
+  hollowed: {
+    ...BASE_TIER_BONUS,
+    effectMult: 1.5,
+    premiumMult: 1.5,
+    waiveKinkFamily: true,
+  },
+};
+
+export function getCorrTierPactBonus(corr: number): CorrTierPactBonus {
+  return TIER_PACT_BONUS[corrTier(corr).key] ?? BASE_TIER_BONUS;
+}
+
+/**
+ * Shared kink-family matcher: the kink maps to trap types via KINK_TRAP_MAP;
+ * a listed family matches when it shares at least one of those trap types.
+ * Kinks absent from the map (toys, scent) never match anything.
+ */
+export function kinkFamilyMatch(
+  kinkKey: string | undefined,
+  families: string[] | undefined
+): boolean {
+  if (!kinkKey || !families || families.length === 0) return false;
+  const kinkTypes = KINK_TRAP_MAP[kinkKey];
+  if (!kinkTypes) return false;
+  return families.some((fam) => KINK_TRAP_MAP[fam]?.some((t) => kinkTypes.includes(t)));
+}
+
+/**
+ * Kink-match rule for a pact: prisoner kink vs the pact's kinkFamily list.
+ * Pacts without kinkFamily never match. Hollowed waives all kinkFamily reqs:
+ * any kinkFamily pact reads as matched for a Hollowed prisoner.
+ */
+export function pactKinkMatch(p: Prisoner, pactId: string): boolean {
+  const pact = PRISON_PACT_MAP[pactId];
+  if (!pact?.kinkFamily || pact.kinkFamily.length === 0) return false;
+  if (getCorrTierPactBonus(p.corr).waiveKinkFamily) return true;
+  return kinkFamilyMatch(p.kinkKey, pact.kinkFamily);
+}
+
 export function getHarshDeathChance(
   _state: GameState,
   p: Prisoner,
@@ -264,6 +364,11 @@ export function getHarshDeathChance(
   }
   if (pactId === 'pxfear' && p.afflictions.includes('hydro')) {
     die += 0.02;
+  }
+  // Ticket 31: kink-matched harsh pacts ride the tier die bonus
+  // (Wavering +2 / Complicit +4 percentage points).
+  if (pactKinkMatch(p, pactId)) {
+    die += getCorrTierPactBonus(p.corr).dieBonus;
   }
   return Math.min(0.95, die);
 }
@@ -386,14 +491,42 @@ export function canExecutePact(
   return { ok: true };
 }
 
-function applyPactStatsToPrisoner(
+/**
+ * Officer-dependent stat payload (pduo): the ONLY pact whose effects change
+ * with a picker choice. Shared so prediction and execution agree.
+ */
+function pactEffectiveEffects(
+  pactId: string,
+  officerCode?: 'V' | 'L'
+): Partial<Record<PactStatKey, [number, number]>> | undefined {
+  if (pactId === 'pduo' && officerCode) {
+    return officerCode === 'V'
+      ? { terror: [8, 8], pleasure: [8, 8] }
+      : { pleasure: [12, 12] };
+  }
+  return undefined;
+}
+
+/**
+ * Ticket 31: shared pact stat math. applyPactStatsToPrisoner (execution) and
+ * predictPactDeltas (UI preview + parity tests) call this with the same roll
+ * source, so a prediction is byte-for-byte the delta list the resolve applies.
+ * Kink-matched pacts ride the CORR_TIERS table: effect multiplier on positive
+ * deltas, post-pact resist multiplier when the pact targeted resist, and the
+ * harsh die bonus (added inside getHarshDeathChance). Corr writes funnel
+ * through applyCorrDelta so the Hollowed ratchet floor holds here too.
+ */
+function computePactStatEffects(
   state: GameState,
   target: Prisoner,
   pactId: string,
-  effOverride?: Partial<Record<PactStatKey, [number, number]>>
-): { updated: Prisoner; deltas: string[] } {
+  effOverride: Partial<Record<PactStatKey, [number, number]>> | undefined,
+  roll: () => number
+): { updated: Prisoner; deltas: string[]; tierLines: string[] } {
   const pact = PRISON_PACT_MAP[pactId];
   const effects = effOverride ?? pact.effects;
+  const matched = pactKinkMatch(target, pactId);
+  const bonus = matched ? getCorrTierPactBonus(target.corr) : null;
   const multBase =
     getTrainMultiplier(state) *
     (pact.luaGroup === 'train' && state.estate.perks.prisonDay ? 1.1 : 1);
@@ -401,13 +534,16 @@ function applyPactStatsToPrisoner(
 
   const next: Prisoner = { ...target, marks: { ...target.marks } };
   const deltas: string[] = [];
+  const tierLines: string[] = [];
+  let resistTouched = false;
+  let positiveTouched = false;
 
   for (const [statKey, range] of Object.entries(effects) as [
     PactStatKey,
     [number, number],
   ][]) {
     const [minV, maxV] = range;
-    let val = maxV > minV ? randInt(minV, maxV) : minV;
+    let val = maxV > minV ? Math.floor(roll() * (maxV - minV + 1)) + minV : minV;
     let m2 = multBase;
 
     if (statKey === 'pleasure' || statKey === 'shame') {
@@ -426,22 +562,53 @@ function applyPactStatsToPrisoner(
     if (statKey === 'terror' && next.traits.includes('berserker')) {
       m2 *= 0.5;
     }
+    // Ticket 31: Devoted+ kink-matched pacts train +50% harder (positive
+    // conditioning deltas only — resist scaling has its own tier rows).
+    if (val > 0 && bonus && bonus.effectMult !== 1) {
+      m2 *= bonus.effectMult;
+    }
 
     if (val > 0) {
       val = Math.round(val * m2);
+      positiveTouched = true;
     } else if (statKey === 'resist' && val < 0) {
       val = -Math.round(-val * resMult);
       if (pactId === 'pwhip' && next.traits.includes('sadist')) {
         val = Math.trunc(val / 1.5);
       }
     }
+    if (statKey === 'resist') resistTouched = true;
 
-    next[statKey] = clamp((next[statKey] ?? 0) + val, 0, 100);
+    // Ticket 31: corr goes through the single ratchet funnel — behavior is
+    // unchanged for corr < CORR_RATCHET_FLOOR.
+    if (statKey === 'corr') {
+      next.corr = applyCorrDelta(next, val);
+    } else {
+      next[statKey] = clamp((next[statKey] ?? 0) + val, 0, 100);
+    }
     const label =
       statKey === 'corr'
         ? 'Corr'
         : statKey.charAt(0).toUpperCase() + statKey.slice(1);
     deltas.push(`${label} ${val >= 0 ? `+${val}` : val}`);
+  }
+
+  // Ticket 31 tier bonus lines, in tier-table order: die, resist, effect.
+  if (bonus) {
+    if (pact.harsh && bonus.dieBonus > 0) {
+      tierLines.push(`Kink match: +${Math.round(bonus.dieBonus * 100)} die`);
+    }
+    if (bonus.resistMult !== 1 && resistTouched) {
+      const before = next.resist;
+      const after = clamp(Math.round(before * bonus.resistMult), 0, 100);
+      if (after !== before) {
+        next.resist = after;
+        tierLines.push(`Kink match: Resist ×${bonus.resistMult}`);
+      }
+    }
+    if (bonus.effectMult !== 1 && positiveTouched) {
+      tierLines.push(`Kink match: effect ×${bonus.effectMult}`);
+    }
   }
 
   // Tough reduces positive stamina cost by 20%
@@ -456,7 +623,38 @@ function applyPactStatsToPrisoner(
     next.dying = false;
   }
 
-  return { updated: next, deltas };
+  return { updated: next, deltas, tierLines };
+}
+
+function applyPactStatsToPrisoner(
+  state: GameState,
+  target: Prisoner,
+  pactId: string,
+  effOverride?: Partial<Record<PactStatKey, [number, number]>>
+): { updated: Prisoner; deltas: string[]; tierLines: string[] } {
+  return computePactStatEffects(state, target, pactId, effOverride, Math.random);
+}
+
+/**
+ * Ticket 31 (predicted deltas, UI-only): the exact stat deltas a pact resolve
+ * will apply, computed by the SAME shared math as execution — including the
+ * `Kink match: …` tier bonus lines (SlaveMaker legibility precedent). Range
+ * rolls use the live RNG, so mocking Math.random in tests makes prediction
+ * and resolution agree byte-for-byte (ticket 23 preview/settle parity bar).
+ */
+export function predictPactDeltas(
+  state: GameState,
+  prisoner: Prisoner,
+  pactId: string,
+  opts?: { officer?: 'V' | 'L' }
+): { updated: Prisoner; deltas: string[]; tierLines: string[] } {
+  return computePactStatEffects(
+    state,
+    prisoner,
+    pactId,
+    pactEffectiveEffects(pactId, opts?.officer),
+    Math.random
+  );
 }
 
 export function executePrisonPact(
@@ -598,18 +796,15 @@ export function executePrisonPact(
   };
 
   // Determine effective stat payload
-  let effOverride: Partial<Record<PactStatKey, [number, number]>> | undefined;
-  if (pactId === 'pduo' && officerCode) {
-    effOverride =
-      officerCode === 'V'
-        ? { terror: [8, 8], pleasure: [8, 8] }
-        : { pleasure: [12, 12] };
-  }
+  const effOverride = pactEffectiveEffects(pactId, officerCode);
 
   const applied = applyPactStatsToPrisoner(working, prisoner, pactId, effOverride);
   let nextPrisoner = applied.updated;
   const deltas = [...applied.deltas];
   const extras: string[] = [];
+  // Ticket 31: tier bonus lines ride the summary right after the deltas
+  // (predicted-deltas legibility — the UI preview emits the same lines).
+  extras.push(...applied.tierLines);
   let interroSuccess: boolean | undefined;
   let died = false;
 
@@ -634,7 +829,9 @@ export function executePrisonPact(
     working = { ...working, fear: clamp(working.fear + 3, 0, 100) };
     extras.push('Fear +3');
     if (nextPrisoner.traits.includes('masochist')) {
-      nextPrisoner.corr = clamp(nextPrisoner.corr + 10, 0, 100);
+      // Ticket 31: corr funnel — ratchet floor applies to pact-specific
+      // bonuses exactly like the effects block.
+      nextPrisoner.corr = applyCorrDelta(nextPrisoner, 10);
       deltas.push('Corr +10 (Masochist)');
     } else if (Math.random() < 0.25) {
       if (nextPrisoner.cond === 'severe' && !nextPrisoner.legend) {
@@ -844,6 +1041,9 @@ export function executePrisonPact(
   let updatedPartner: Prisoner | null = null;
   if (partner) {
     const partnerApplied = applyPactStatsToPrisoner(working, partner, pactId, effOverride);
+    if (partnerApplied.tierLines.length > 0) {
+      extras.push(...partnerApplied.tierLines.map((l) => `${partner.name}: ${l}`));
+    }
     const partnerMarked = checkPrisonerMarks(working, partnerApplied.updated);
     updatedPartner = partnerMarked.prisoner;
   }
@@ -1067,6 +1267,8 @@ export interface JobSettleYield {
   stars: 1 | 2 | 3;
   lowStamina: boolean;
   hired: boolean;
+  /** Ticket 31: Complicit-tier kink-matched brothel/dairy labor (×1.25). */
+  kinkYield: boolean;
 }
 
 const EMPTY_JOB_YIELD: JobSettleYield = {
@@ -1081,6 +1283,7 @@ const EMPTY_JOB_YIELD: JobSettleYield = {
   stars: 2,
   lowStamina: false,
   hired: false,
+  kinkYield: false,
 };
 
 /**
@@ -1103,6 +1306,15 @@ export function getJobSettleYield(
   const lowStamina = p.stamina < JOB_LOW_STAMINA_THRESHOLD;
   const stamMult = lowStamina ? JOB_LOW_STAMINA_MULT : 1;
 
+  // Ticket 31: Complicit kink-matched labor prices up — brothel/dairy yield
+  // ×1.25 when the worker's kink maps into the job's family (tier table row
+  // 3). Rides the same shared math as the preview, so the ticket 23 parity
+  // contract holds.
+  const kinkYield =
+    corrTier(p.corr).key === 'complicit' &&
+    kinkFamilyMatch(p.kinkKey, JOB_KINK_FAMILIES[jobKey]);
+  const kinkMult = kinkYield ? getCorrTierPactBonus(p.corr).yieldMult : 1;
+
   const baseMp =
     (job.outputs.mp ?? 0) +
     (job.outputs.mpRansomRatio
@@ -1124,12 +1336,13 @@ export function getJobSettleYield(
     talentBonus -= 0.5;
   }
 
-  const scale = (n: number) => Math.round(n * aptMult * hiredMult * stamMult);
+  const scale = (n: number) =>
+    Math.round(n * aptMult * hiredMult * stamMult * kinkMult);
 
   return {
     mp: Math.max(
       0,
-      Math.round(baseMp * aptMult * hiredMult * (1 + talentBonus) * stamMult)
+      Math.round(baseMp * aptMult * hiredMult * (1 + talentBonus) * stamMult * kinkMult)
     ),
     food: scale(job.outputs.food ?? 0),
     approval: scale(job.outputs.approval ?? 0),
@@ -1141,6 +1354,7 @@ export function getJobSettleYield(
     stars,
     lowStamina,
     hired,
+    kinkYield,
   };
 }
 
@@ -1165,6 +1379,7 @@ export function getJobYieldPreview(
   if (job.outputs.affVesper) stats.push(`Vesper Aff +${y.affVesper}`);
   if (y.hired) stats.push('Salary -5 MP');
   if (y.lowStamina) stats.push('Exhausted (1/2 output)');
+  if (y.kinkYield) stats.push(`Kink ×${getCorrTierPactBonus(p.corr).yieldMult}`);
 
   return {
     mp: y.mp,
@@ -1366,7 +1581,26 @@ export function canConvertPrisoner(
       return { ok: false, reason: 'Requires a free floor with installed traps.' };
     }
   } else if (kind === 'servant') {
-    if (p.corr < 70) return { ok: false, reason: 'Requires Corruption >= 70.' };
+    // Ticket 31 conversion lattice: the gate numbers live on the conversion
+    // def (corrReq). Original corr >= 70 route unchanged; the alt route adds
+    // corr >= 60 AND Pleasure Mark 3 + Obey Mark 2 (CoC AND-gate ruling).
+    const corrReq = PRISON_CONVERSIONS.find((c) => c.key === 'servant')?.corrReq;
+    const baseMin = corrReq?.min ?? 70;
+    const alt = corrReq?.alt;
+    const altOk =
+      !!alt &&
+      p.corr >= alt.min &&
+      alt.marks.every(([mk, lv]) => (p.marks[mk] ?? 0) >= lv);
+    if (p.corr < baseMin && !altOk) {
+      return {
+        ok: false,
+        reason: alt
+          ? `Requires Corruption >= ${baseMin}, or >= ${alt.min} + ${alt.marks
+              .map(([mk, lv]) => `${MARK_LABELS[mk]} Mark ${lv}`)
+              .join(' + ')}.`
+          : `Requires Corruption >= ${baseMin}.`,
+      };
+    }
   } else if (kind === 'pet') {
     if (p.marks.pleasure < 3 || p.marks.obey < 2) {
       return { ok: false, reason: 'Requires Pleasure Mark 3 + Obey Mark 2.' };
@@ -1507,6 +1741,10 @@ export function convertPrisoner(
     job: jobKey,
     assignedFloor,
     owner,
+    // Ticket 31 ratchet check: no conversion lowers corr today, so the write
+    // funnels through applyCorrDelta with a zero delta — if a future
+    // conversion ever carries corr clauses, the Hollowed floor still holds.
+    corr: applyCorrDelta(prisoner, 0),
   };
 
   const nextState: GameState = {
@@ -1764,6 +2002,14 @@ export function calculateRansom(
   if (opts?.buyerId) {
     const bMult = getBuyerMultiplier(state, p, opts.buyerId);
     mul(bMult, BUYERS.find((b) => b.id === opts.buyerId)?.shortLabel ?? opts.buyerId);
+    // Ticket 31: Devoted/Hollowed captives with a mapped kink command a
+    // buyer premium (tier table: ransom buyer premium ×1.5 — the Hollowed
+    // waiver keeps the Devoted treatment at the top of the ladder).
+    const bonus = getCorrTierPactBonus(p.corr);
+    const hasMappedKink = !!p.kinkKey && !!KINK_TRAP_MAP[p.kinkKey];
+    if (bonus.premiumMult !== 1 && hasMappedKink) {
+      mul(bonus.premiumMult, 'Kink-Devoted');
+    }
   }
 
   const amount = Math.max(1, Math.round(base * m));

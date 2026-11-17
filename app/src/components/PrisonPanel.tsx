@@ -41,6 +41,7 @@ import {
   getSaleRiskOdds,
   isActiveCaptive,
   isActiveMole,
+  predictPactDeltas,
   releasePrisoner,
   sellPrisoner,
   unassignPrisonerJob,
@@ -495,6 +496,16 @@ export function PrisonPanel({
                               getInterrogateChance(state, activeCaptive) * 100
                             )
                           : null;
+                      // Ticket 31 (predicted deltas, UI-only): the exact stat
+                      // deltas this resolve will apply, via the same shared
+                      // math as execution — including the `Kink match: …`
+                      // tier bonus line (SlaveMaker legibility precedent).
+                      const predicted = predictPactDeltas(state, activeCaptive, pact.id, {
+                        officer: pact.id === 'pduo' ? effectiveDuoOfficer : undefined,
+                      });
+                      const predictedLine = [...predicted.deltas, ...predicted.tierLines].join(
+                        ' · '
+                      );
 
                       return (
                         <button
@@ -535,6 +546,11 @@ export function PrisonPanel({
                               : ''}
                             {pact.summary}
                           </small>
+                          {guard.ok && predictedLine && (
+                            <small style={{ color: 'var(--accent, var(--w))', opacity: 0.85 }}>
+                              Predicted: {predictedLine}
+                            </small>
+                          )}
                           {harshDie !== null && (
                             <span className="dk-hz-tag">
                               Death Risk: {harshDie}%
