@@ -249,9 +249,11 @@ export function applyTrapBeat(slot: TrapSlot, ctx: TrapBeatCtx): TrapSlot {
 
 /**
  * Ticket 29 settlement: the dungeon re-arms every slot between waves and wear
- * decays toward 0; attunement/attunedKink persist forever with the TiTS-style
- * ratchet — once attunement reaches TIER it never drops below it (guard for
- * any future decay path). Slots with no ledger at all pass through untouched.
+ * decays toward 0; attunement/attunedKink persist forever — nothing decays
+ * them, so no ratchet guard is needed (scrutinize 2026-11-18 removed the
+ * TIER-clamp expression: it was a mathematical no-op guarding a decay path
+ * that does not exist; restore a real guard alongside any future attunement
+ * decay). Slots with no ledger at all pass through untouched.
  */
 export function settleTrapSlot(slot: TrapSlot): TrapSlot {
   if (
@@ -267,10 +269,7 @@ export function settleTrapSlot(slot: TrapSlot): TrapSlot {
     ...slot,
     status: 'armed',
     wear: Math.max(0, (slot.wear ?? 0) - TRAP_WEAR.SETTLE_DECAY),
-    attunement: Math.max(
-      attunement,
-      attunement >= TRAP_ATTUNEMENT.TIER ? TRAP_ATTUNEMENT.TIER : attunement
-    ),
+    attunement,
   };
 }
 

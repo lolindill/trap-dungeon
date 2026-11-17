@@ -13,6 +13,7 @@ import type {
   Prisoner,
 } from '../types/game';
 import { appendDayLogLine, canSpendDayAp, isDayPhase, spendDayAp } from './dayLoop';
+import { applyCorrDelta } from './tiers';
 import { heroGradeIndex } from './heroes';
 import { clamp, uid } from './rng';
 
@@ -633,7 +634,8 @@ export function breedMonster(
           },
           stamina: clamp(prisoner.stamina - 15, 0, prisoner.staminaMax),
           resist: clamp(prisoner.resist - 5, 0, 100),
-          corr: clamp(prisoner.corr + 5, 0, 100),
+          // Ticket 31 corr funnel: the breeding write honors the Hollowed ratchet.
+          corr: applyCorrDelta(prisoner, 5),
         };
         lineText = `💕 ${prisoner.name} (♀) × ${mobName} bred! Delivery due on Wave ${dueWave}${inheritXp > 0 ? ` (Bloodline +${inheritXp} XP)` : ''}.`;
         sceneContext = `Female captive ${prisoner.name} was bred with ${mobName} in the Beast Pen; she now carries monster eggs due on Wave ${dueWave}.`;

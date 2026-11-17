@@ -50,7 +50,7 @@ export interface TrapSlot {
   // Ticket 29 trap-lifecycle ledger — optional fields only (Phase 5 `staggered`
   // pattern, no schemaVersion bump): absent status = armed, absent wear =
   // unworn. `wear` is temporary (settles −SETTLE_DECAY per wave); `attunement`
-  // + `attunedKink` persist forever (ratchet floor at TIER). Read-side
+  // + `attunedKink` persist forever (nothing decays them). Read-side
   // consumers (effectiveGrade/DC/prompt words) land in ticket 30.
   status?: TrapSlotStatus;
   wear?: number;

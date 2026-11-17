@@ -16,7 +16,7 @@ Ship the corruption/trainer parameter system synthesized by the 2026-11-16 resea
 - **Judge architecture ruling:** corruption state belongs on the PERSISTENT prisoner layer, not per-hero in-raid meters. Full KP/DoL hero-meter triple REJECTED; one derived hero integer (`corrFeed`) ADOPTED.
 - **Pattern rulings:** RimWorld two-phase ADOPT (implicit) · KP targetability ADOPT prison-only (+trap-side attunement) · TiTS ratchet floor ADOPT (corr tier 85; attunement tier 50) · CoC AND-gate lattice ADOPT (conversions + tiers) · DoL loop ADAPT (no pure recovery — comfort jobs add corr) · DD threshold-rolled state REJECT in-raid (resolve roll = wire-or-cut triage in ticket 32, default CUT) · predicted deltas ADOPT UI-only (ticket 31).
 - **One beat event, two ledgers (Stage 2.5):** the ero-beat that increments hero `corrFeed` also writes slot `wear`/`attunement` — hero and dungeon corrupt symmetrically.
-- **LLM ruling:** tier words and slot status words only — never raw meter ints into prompts.
+- **LLM ruling:** tier words and slot status words only — never raw meter ints into prompts. *(Exception recorded 2026-11-18: the roster context line's pre-existing `Res X% / Corr Y%` percents — present at baseline d02ad4a, prison.ts `buildPrisonRosterPromptContext` — are grandfathered; the ruling binds everything this map and later work add.)*
 - **Schema red line:** optional fields only (Phase 5 `staggered` pattern) — no `HeroStatus` change, no schemaVersion bump, no `status === 'alive'` filter touched; `waveStartSnapshot` covers slot-state rewind for free.
 - **One-commit rule (balance-wiring precedent):** every ledger write lands with its consumer + cap/reset in the same phase; ticket 29 (write-path) + 30 (read-path) merge as a pair so no write-only state reaches `main`.
 - **Numbers are first-pass:** capture seed weights, drift rates, repair pricing, tier bonuses, ending thresholds, and Endless scoring weights are recorded-in-resolution first passes; final tuning rides the balance pass (never inflate difficulty to compensate — balance council red line continues).
@@ -30,6 +30,17 @@ Ship the corruption/trainer parameter system synthesized by the 2026-11-16 resea
 - [30: trap read path + repair](tickets/30-trap-read-path-dc-attunement-effects.md): `effectiveGrade` wear softening + spent=0 bonus; attunement ≥50 mods−1 / ≥85 corrFeed pass-through + DC+1; max-weight attuned selection; Repair All 1 AP + 3 MP/slot; prep-intel disarm (1 intel, entry floor, once per prep); prompt status words.
 - [31: tier pact mechanics + conversion lattice](tickets/31-corr-tiers-pact-mechanics-conversion-lattice.md): kinkFamily pacts with the 5-tier die/resist/yield/premium table; servant corr AND-clause; `applyCorrDelta` in `engine/tiers.ts` = the single Hollowed-85 ratchet point (absorbed ticket 28's clamp); predicted deltas on pact buttons.
 - [32: endings/Endless hooks + resolve-roll triage](tickets/32-endings-endless-hooks-resolve-roll-triage.md): dominion ending at attunement ≥ 300 + 5×corr-100 (Gallery-visible); corr tint at avg 70/30; Endless rank × (1 + avgCorr/200 + attunement/400); in-raid resolve roll triaged **CUT** with rationale recorded.
+
+## Post-map scrutiny (2026-11-18)
+
+Full scrutinize pass over the shipped map (5 parallel trace agents + first-hand spot-checks; 338/338 + build green verified first-hand). Dispositions:
+
+- **Prisoner identity fields dead** — `persona/skill/weakness/kinkDesc` written at capture (ticket 26), zero runtime readers (grep-verified). Decision: **CONSUME** — follow-on [33: prisoner identity → prison roster prompt consumer](tickets/33-prisoner-identity-prompt-consumer.md) (prose fields, ruling-safe).
+- **Two corr-write bypasses** of ticket 31's "ONE funnel" (`dayLoop.ts` interrogate +5, `monsters.ts` breeding +5) — behavior-preserving today (positive deltas); funneled through `applyCorrDelta` in this pass (addendum on ticket 31).
+- **Dead ratchet removed** — `settleTrapSlot`'s TIER-clamp was a mathematical no-op guarding a decay that does not exist; `TRAP_ATTUNEMENT.RATCHET_FLOOR` had zero consumers. Both removed, output byte-identical (addendum on ticket 29).
+- **Ruling exception recorded** (Notes above): roster percents grandfathered, tier words stay mandatory for new content.
+- **Verified clean (no action):** corrFeed 2-writer/1-reader/reset lifecycle incl. captured-hero reset ordering; trap ledger write↔read pair incl. raidMods `floorTrapPower` mirror parity; dominion gate reached from BOTH settlement paths; Endless 200-MP zero-corr baseline; legacy-save undefined handling at every ledger consumer; test honesty — all 8 new test files drive real production functions (real-vs-real parity test, real gate boundaries, real ratchet sweep).
+- **Remaining nits (logged, no action):** `REPAIR_MP_PER_SLOT` lives in dayLoop.ts and `RANK_CORR_WEIGHTS` in endings.ts though resolutions say constants.ts — relocate only if the balance pass wants one home; dominion chip shows the ≥300 half of the gate only; estate drift Set iterates all floors (comment says "held under") and does not filter slot status (ticket 28's recorded deviation).
 
 ## Tickets (execution order)
 

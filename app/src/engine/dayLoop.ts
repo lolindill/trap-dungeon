@@ -1,6 +1,7 @@
 import { calcOfficerAffGain } from './officers';
 import { clamp } from './rng';
 import { withWaveStartSnapshot } from './saveLoad';
+import { applyCorrDelta } from './tiers';
 import type {
   DayLogLine,
   FloorState,
@@ -682,7 +683,8 @@ export function performQuickPrisonAction(
   const updated: Prisoner = {
     ...cap,
     resist: clamp(cap.resist - 5, 0, 100),
-    corr: clamp(cap.corr + 5, 0, 100),
+    // Ticket 31 corr funnel: the interrogate write honors the Hollowed ratchet.
+    corr: applyCorrDelta(cap, 5),
     stamina: clamp(cap.stamina - 10, 0, cap.staminaMax),
   };
   const nextPrisoners = [...spent.state.prisoners];
