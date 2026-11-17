@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CFG } from '../../data/constants';
 import { STARTER_BLUEPRINTS } from '../../data/starterBlueprints';
-import type { GameState } from '../../types/game';
+import type { GameState, Hero } from '../../types/game';
 import { installBlueprintToFloor, installCustomTrap } from '../dungeon';
 import { applyPrepReply } from '../tagParser';
 import {
@@ -30,7 +30,7 @@ import {
   finishSettlementToNextBuild,
   startInvasionPhase,
 } from '../workflow';
-import { advanceRaidStep } from '../raid';
+import { advanceRaidStep, resolveFloorEncounter } from '../raid';
 
 function createMemoryStorage(): Storage {
   const store = new Map<string, string>();
@@ -453,6 +453,93 @@ describe('waveStartSnapshot capture and rewind', () => {
     // Direct helper test
     const directSnap = captureWaveStartSnapshot(nextBuild);
     expect('waveStartSnapshot' in (directSnap as object)).toBe(false);
+  });
+
+  it('ticket 29: rewind roundtrip restores post-beat slot ledger exactly (no migration)', () => {
+    function makeHero(over: Partial<Hero> = {}): Hero {
+      return {
+        slot: 1,
+        grade: 'C',
+        status: 'alive',
+        gender: 'female',
+        classKey: 'adventurer',
+        classLabel: 'adventurer',
+        raceKey: 'human',
+        raceLabel: 'human',
+        traits: [],
+        kinkKey: 'praise',
+        kinkDesc: 'praise and gentle words',
+        age: 'late 20s',
+        body: 'athletic',
+        looks: 'plain',
+        persona: 'steady',
+        origin: 'guild dispatch',
+        exp: 'some',
+        marital: 'single',
+        intel: 0,
+        name: 'TestHero',
+        appearance: '',
+        outfit: '',
+        personalityText: '',
+        skill: '',
+        weakness: '',
+        kinkText: '',
+        cond: '',
+        ailment: 0,
+        aroused: false,
+        usedLuck: false,
+        injIgnored: false,
+        lastRollText: '',
+        ...over,
+      };
+    }
+
+    const s = createInitialGameState();
+    s.mode = 'raid';
+    s.raidFirstRoom = true;
+    const floor = {
+      floor: 1,
+      synergy: '-' as const,
+      slots: [
+        { id: 't0', text: 'Lewd Snare — a gimmick', grade: 'SSS' as const, types: ['lewd'], mpInvested: 10 },
+      ],
+    };
+    s.floors = s.floors.map((f) => (f.floor === 1 ? { ...floor } : f));
+
+    // A beat resolves STAGGERED against the faced slot → slot ledger written.
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0); // nat1, ero-gated → captured beat
+    const res = resolveFloorEncounter(s, floor, [makeHero({ name: 'Mira' })], 1);
+    spy.mockRestore();
+    const postSlot = res.nextFloors[0].slots[0];
+    expect(postSlot.wear).toBe(15);
+    expect(postSlot.attunement).toBe(15);
+    expect(postSlot.attunedKink).toBe('praise');
+
+    // Snapshot capture → restore roundtrip (JSON clone + migrate) keeps the
+    // post-beat slot state exactly — optional fields ride along, no migration.
+    const postState: GameState = { ...s, floors: res.nextFloors };
+    const snap = captureWaveStartSnapshot(postState);
+    const restored = restoreWaveStartSnapshot({ ...postState, waveStartSnapshot: snap });
+    expect(restored).not.toBeNull();
+    expect(restored!.floors[0].slots[0]).toEqual(postSlot);
+    expect(restored!.floors[0].slots[0].status).toBeUndefined();
+    expect(restored!.floors[0].slots[0].wear).toBe(15);
+    expect(restored!.floors[0].slots[0].attunement).toBe(15);
+    expect(restored!.floors[0].slots[0].attunedKink).toBe('praise');
+
+    // Legacy slots without ledger fields migrate to exactly the old shape.
+    const legacyState = JSON.parse(JSON.stringify(postState)) as GameState;
+    delete (legacyState.floors[0].slots[0] as { wear?: number }).wear;
+    delete (legacyState.floors[0].slots[0] as { attunement?: number }).attunement;
+    delete (legacyState.floors[0].slots[0] as { attunedKink?: string }).attunedKink;
+    const legacyMigrated = migrateGameState(legacyState);
+    expect(legacyMigrated.floors[0].slots[0]).toEqual({
+      id: 't0',
+      text: 'Lewd Snare — a gimmick',
+      grade: 'SSS',
+      types: ['lewd'],
+      mpInvested: 10,
+    });
   });
 });
 

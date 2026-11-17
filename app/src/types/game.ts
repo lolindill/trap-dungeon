@@ -32,6 +32,8 @@ export type WarRivalKey = 'paladin' | 'merchant' | 'witch';
 export type ExpeditionLengthKey = 'short' | 'mid' | 'long' | 'grand' | 'abyss';
 export type SaveSlotId = 1 | 2 | 3 | 4 | 5;
 
+export type TrapSlotStatus = 'armed' | 'spent' | 'disarmed';
+
 export interface TrapSlot {
   id: string;
   text: string;
@@ -39,6 +41,15 @@ export interface TrapSlot {
   types: string[];
   mpInvested: number;
   blueprintId?: string;
+  // Ticket 29 trap-lifecycle ledger — optional fields only (Phase 5 `staggered`
+  // pattern, no schemaVersion bump): absent status = armed, absent wear =
+  // unworn. `wear` is temporary (settles −SETTLE_DECAY per wave); `attunement`
+  // + `attunedKink` persist forever (ratchet floor at TIER). Read-side
+  // consumers (effectiveGrade/DC/prompt words) land in ticket 30.
+  status?: TrapSlotStatus;
+  wear?: number;
+  attunement?: number;
+  attunedKink?: string;
 }
 
 export type FloorCombatSlot =

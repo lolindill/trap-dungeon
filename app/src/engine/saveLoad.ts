@@ -39,6 +39,7 @@ import type {
   TownState,
   TrapBlueprint,
   TrapSlot,
+  TrapSlotStatus,
   WarState,
   WaveStartSnapshot,
   WondersState,
@@ -512,6 +513,15 @@ function migrateFloors(rawFloors: unknown[]): FloorState[] {
         types: asStringArray(s.types),
         mpInvested: asNonNegInt(s.mpInvested, 0),
         ...(typeof s.blueprintId === 'string' ? { blueprintId: s.blueprintId } : {}),
+        // Ticket 29 slot-lifecycle ledger: pass the optional fields through so
+        // save/load and waveStartSnapshot rewind keep post-beat slot state
+        // (optional fields only — legacy saves without them stay identical).
+        ...(s.status === 'armed' || s.status === 'spent' || s.status === 'disarmed'
+          ? { status: s.status as TrapSlotStatus }
+          : {}),
+        ...(typeof s.wear === 'number' ? { wear: s.wear } : {}),
+        ...(typeof s.attunement === 'number' ? { attunement: s.attunement } : {}),
+        ...(typeof s.attunedKink === 'string' ? { attunedKink: s.attunedKink } : {}),
       }));
 
     const combatSlots: FloorCombatSlot[] = Array.isArray(candidate.combatSlots)

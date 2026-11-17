@@ -1,4 +1,4 @@
-import { BEATS, CFG, KINK_TRAP_MAP, TRAP_ERO_TYPES } from '../data/constants';
+import { BEATS, CFG, KINK_TRAP_MAP, TRAP_ATTUNEMENT, TRAP_ERO_TYPES, TRAP_WEAR } from '../data/constants';
 import { getMonsterDisplayName, getMonsterLineage, MONSTER_CFG, MONSTER_OCC_ACT } from '../data/monsterData';
 import { CRISIS_CFG, EPIC_CFG, WAR_CFG } from '../data/realmData';
 import type {
@@ -95,7 +95,9 @@ function slotLabel(slot: TrapSlot): string {
 
 /**
  * Phase 5 F1: pure faced-slot weights. disarmer → one-hot on the
- * highest-grade slot; kink-matched slots (KINK_TRAP_MAP) → ×2; else uniform.
+ * highest-grade ACTIVE slot; kink-matched slots (KINK_TRAP_MAP) → ×2; else
+ * uniform. Ticket 29: spent/disarmed slots get weight 0 — they are out of the
+ * fight and never faced.
  */
 export function facedSlotWeights(
   hero: Pick<Hero, 'kinkKey' | 'traits'>,
@@ -103,21 +105,26 @@ export function facedSlotWeights(
 ): number[] {
   if (floor.slots.length === 0) return [];
   if (hero.traits.includes('disarmer')) {
-    let best = 0;
-    for (let i = 1; i < floor.slots.length; i += 1) {
-      if (slotGradeBonus(floor.slots[i].grade) > slotGradeBonus(floor.slots[best].grade)) {
+    let best = -1;
+    for (let i = 0; i < floor.slots.length; i += 1) {
+      if (!isTrapActive(floor.slots[i])) continue;
+      if (best < 0 || slotGradeBonus(floor.slots[i].grade) > slotGradeBonus(floor.slots[best].grade)) {
         best = i;
       }
     }
     return floor.slots.map((_, i) => (i === best ? 1 : 0));
   }
-  return floor.slots.map((s) => (slotKinkMatched(hero.kinkKey, s.types) ? 2 : 1));
+  return floor.slots.map((s) =>
+    !isTrapActive(s) ? 0 : slotKinkMatched(hero.kinkKey, s.types) ? 2 : 1
+  );
 }
 
 /**
  * Phase 5 F1: pick the slot a hero FACES before the d20 roll. Replaces the old
  * post-roll flavor pick — the faced slot gates ero-capture, feeds the detail
- * text and the audit row.
+ * text and the audit row. Ticket 29: spent/disarmed slots are skipped; when
+ * every slot is spent/disarmed there is nothing to face (pickWeighted would
+ * fall back to index 0, so guard explicitly).
  */
 export function selectFacedSlot(
   hero: Pick<Hero, 'kinkKey' | 'traits'>,
@@ -125,8 +132,12 @@ export function selectFacedSlot(
 ): FacedSlotInfo | null {
   if (floor.slots.length === 0) return null;
   const weights = facedSlotWeights(hero, floor);
+  // Pick among ACTIVE indices only — pickWeighted's roll<=0 edge would
+  // otherwise return a weight-0 (spent/disarmed) bucket at roll === 0.
+  const candidates = weights.flatMap((w, i) => (w > 0 ? [i] : []));
+  if (candidates.length === 0) return null;
   const index = pickWeighted(
-    weights.map((_, i) => i),
+    candidates,
     (i) => weights[i]
   );
   const slot = floor.slots[index];
@@ -166,6 +177,95 @@ export function decideBeat(ctx: BeatCtx): string {
     if (-ctx.margin >= ctx.deathMargin) return 'dead';
   }
   return 'captured';
+}
+
+// --- Ticket 29: trap lifecycle write-path (slot status/wear/attunement) -----
+
+/** Ticket 29 disarm counterplay: a disarmer passing with this margin cuts the faced slot. */
+const TRAP_DISARM_MARGIN = 5;
+
+const PASS_BEATS = new Set(['easy', 'clean', 'narrow', 'luck']);
+
+function isPassBeat(beatKey: string): boolean {
+  return PASS_BEATS.has(beatKey);
+}
+
+/**
+ * Ticket 29: a slot is targetable while armed — an absent status means armed
+ * (optional-fields-only schema). Spent/disarmed slots are skipped by
+ * faced-selection and receive no further ledger writes.
+ */
+export function isTrapActive(slot: Pick<TrapSlot, 'status'>): boolean {
+  return slot.status === undefined || slot.status === 'armed';
+}
+
+export interface TrapBeatCtx {
+  beatKey: string;
+  margin: number;
+  kinkMatched: boolean;
+  /** Set when THIS beat was absorbed by the faced slot: capture-meter STAGGER or real capture. */
+  caughtBySlot?: 'staggered' | 'captured';
+  heroKinkKey: string;
+  isDisarmer: boolean;
+}
+
+/**
+ * Ticket 29 Stage 2.5 — "one beat event, two ledgers": the same beat that
+ * resolves the hero writes the faced slot's ledger. Pure: returns a new slot,
+ * never mutates. Spent/disarmed slots receive no writes at all.
+ *   - any beat: wear += PER_BEAT / PER_BEAT_KINK (kink-matched), capped at SPENT;
+ *     wear reaching SPENT flips the slot to `spent`.
+ *   - beat resolves STAGGERED/CAPTURED by this slot: attunement += PER_STAGGER /
+ *     PER_CAPTURE (cap 100) and the slot remembers the hero's kink forever.
+ *   - disarmer passes with margin >= 5: slot `disarmed` (a narrow-beat pass
+ *     never disarms — margin gates it).
+ */
+export function applyTrapBeat(slot: TrapSlot, ctx: TrapBeatCtx): TrapSlot {
+  if (!isTrapActive(slot)) return slot;
+  const next: TrapSlot = { ...slot };
+  next.wear = Math.min(
+    TRAP_WEAR.SPENT,
+    (next.wear ?? 0) + (ctx.kinkMatched ? TRAP_WEAR.PER_BEAT_KINK : TRAP_WEAR.PER_BEAT)
+  );
+  if (ctx.caughtBySlot) {
+    const gain =
+      ctx.caughtBySlot === 'captured' ? TRAP_ATTUNEMENT.PER_CAPTURE : TRAP_ATTUNEMENT.PER_STAGGER;
+    next.attunement = Math.min(100, (next.attunement ?? 0) + gain);
+    next.attunedKink = ctx.heroKinkKey;
+  }
+  if (ctx.isDisarmer && isPassBeat(ctx.beatKey) && ctx.margin >= TRAP_DISARM_MARGIN) {
+    next.status = 'disarmed';
+  } else if (next.wear >= TRAP_WEAR.SPENT) {
+    next.status = 'spent';
+  }
+  return next;
+}
+
+/**
+ * Ticket 29 settlement: the dungeon re-arms every slot between waves and wear
+ * decays toward 0; attunement/attunedKink persist forever with the TiTS-style
+ * ratchet — once attunement reaches TIER it never drops below it (guard for
+ * any future decay path). Slots with no ledger at all pass through untouched.
+ */
+export function settleTrapSlot(slot: TrapSlot): TrapSlot {
+  if (
+    slot.status === undefined &&
+    slot.wear === undefined &&
+    slot.attunement === undefined &&
+    slot.attunedKink === undefined
+  ) {
+    return slot;
+  }
+  const attunement = slot.attunement ?? 0;
+  return {
+    ...slot,
+    status: 'armed',
+    wear: Math.max(0, (slot.wear ?? 0) - TRAP_WEAR.SETTLE_DECAY),
+    attunement: Math.max(
+      attunement,
+      attunement >= TRAP_ATTUNEMENT.TIER ? TRAP_ATTUNEMENT.TIER : attunement
+    ),
+  };
 }
 
 function stripRaidLinkKeys(apUsed: Record<string, boolean>): Record<string, boolean> {
@@ -225,6 +325,9 @@ export function resolveFloorEncounter(
   let nextMonsters = state.monsters.map((m) => ({ ...m }));
   let nextFloors = state.floors.map((fl) => ({
     ...fl,
+    // Ticket 29: slots are mutated by the beat ledger below, so they get real
+    // copies here (previously shared refs — no writer existed).
+    slots: fl.slots.map((s) => ({ ...s })),
     combatSlots: (fl.combatSlots ?? []).map((s) => ({ ...s })),
   }));
   let nextPrisoners = state.prisoners.map((p) => ({ ...p }));
@@ -441,6 +544,10 @@ export function resolveFloorEncounter(
     // ero-gated slot funnels to `captured` (never dead), standard slots keep
     // the old death ladder verbatim.
     const beatKey = decideBeat({ die, margin, wasSevere, deathMargin, eroGated });
+    // Ticket 29 slot ledger: set when THIS beat is absorbed by the faced slot
+    // (capture-meter STAGGER or real capture) — drives the attunement write.
+    let caughtBySlot: 'staggered' | 'captured' | null = null;
+    let facedDisarmed = false;
 
     const afterNotes: string[] = [];
     if (metaMods.labels.length > 0) {
@@ -473,9 +580,11 @@ export function resolveFloorEncounter(
         // bypass the meter; so does the core-guard capture at the Core Room.
         h.usedStagger = true;
         h.staggered = true;
+        caughtBySlot = 'staggered';
         afterNotes.push('capture meter spent — STAGGERED, alive but shaken (mods −1)');
       } else {
         h.status = beatKey === 'dead' ? 'dead' : 'captured';
+        if (h.status === 'captured') caughtBySlot = 'captured';
         h.fallenFloor = floor.floor;
         h.fallenWave = wave;
         fell.push(h);
@@ -513,6 +622,31 @@ export function resolveFloorEncounter(
       } else {
         h.ailment = 1;
         afterNotes.push('now AFFLICTED');
+      }
+    }
+
+    // Ticket 29 Stage 2.5 — one beat event, two ledgers: the same beat that
+    // resolved the hero writes the faced slot's wear/attunement ledger into
+    // nextFloors (pure applyTrapBeat; spent/disarmed slots receive nothing).
+    // Guarded on the faced slot existing in the state's own floor copy —
+    // encounter-only callers may pass a floor that is not registered.
+    if (faced) {
+      const ledgerFl = nextFloors.find((fl) => fl.floor === floor.floor);
+      const slotBefore = ledgerFl ? ledgerFl.slots[faced.index] : undefined;
+      if (ledgerFl && slotBefore) {
+        const slotAfter = applyTrapBeat(slotBefore, {
+          beatKey,
+          margin,
+          kinkMatched: faced.kinkMatched,
+          caughtBySlot: caughtBySlot ?? undefined,
+          heroKinkKey: h.kinkKey,
+          isDisarmer: h.traits.includes('disarmer'),
+        });
+        ledgerFl.slots[faced.index] = slotAfter;
+        if (slotAfter.status === 'disarmed' && slotBefore.status !== 'disarmed') {
+          facedDisarmed = true;
+          afterNotes.push(`DISARMED faced trap #${faced.index + 1}`);
+        }
       }
     }
 
@@ -580,7 +714,7 @@ export function resolveFloorEncounter(
       fearPenalty: fPen,
       statusAfter: h.status,
       faced: faced
-        ? `#${faced.index + 1} ${faced.label}${faced.kinkMatched ? ' (kink)' : ''}`
+        ? `#${faced.index + 1} ${faced.label}${faced.kinkMatched ? ' (kink)' : ''}${facedDisarmed ? ' [disarmed]' : ''}`
         : undefined,
     });
   }
@@ -1014,8 +1148,12 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
 
   // Realm: Tamer steals ★1 monsters (30% each) & Plague kills 10% monsters
   let nextMonsters = state.monsters.map((m) => ({ ...m }));
+  // Ticket 29: the settlement resolution point also settles the slot ledger —
+  // the dungeon re-arms every trap (status → armed), wear decays toward 0 and
+  // attunement/attunedKink persist forever (ratchet floor at TIER).
   let nextFloors = state.floors.map((fl) => ({
     ...fl,
+    slots: fl.slots.map(settleTrapSlot),
     combatSlots: (fl.combatSlots ?? []).map((cs) => ({ ...cs })),
   }));
   const tamerSit = hasActiveRealmSituation(state, 'tamer', state.wave);

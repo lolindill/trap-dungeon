@@ -536,6 +536,20 @@ export const KINK_TRAP_MAP: Record<string, string[]> = {
   chastity: ['bind'],
 };
 
+// Ticket 29 Stage 2.5 (slot ledger): one beat event, two ledgers — the ero-beat
+// that feeds the hero also wears the faced slot. `wear` is temporary (decays
+// SETTLE_DECAY per settlement; SOFT_GRADE is ticket 30's read threshold); at
+// SPENT the slot drops out of faced-selection until it settles. Kink-matched
+// slots wear faster (the hero lingers).
+export const TRAP_WEAR = { PER_BEAT: 10, PER_BEAT_KINK: 15, SOFT_GRADE: 60, SPENT: 100, SETTLE_DECAY: 30 };
+
+// Ticket 29 (slot ledger): attunement is the trap's permanent memory of the
+// kinks it has absorbed — +15 per beat it STAGGERS or CAPTURES (cap 100),
+// never decays. TIER (50) is the ratchet floor the settlement ratchet protects
+// (the trap never forgets a milestone); ASCENDANT (85) is ticket 30's top read
+// threshold. RATCHET_FLOOR mirrors TIER for consumers.
+export const TRAP_ATTUNEMENT = { PER_STAGGER: 15, PER_CAPTURE: 15, TIER: 50, ASCENDANT: 85, RATCHET_FLOOR: 50 };
+
 export const OPENING_TEXT = `Blue mana pulses through a seven-floor labyrinth. Deep below, a Dungeon Core beats like a slow heart, waiting for its new master.
 
 Above ground, word of a newly awakened labyrinth is already spreading toward the Hero Guild. Beside the Control Room's scrying crystals, Lilim flips open a fresh ledger with a wicked grin while Vesper adjusts her cuffs and checks the Core's mana reserves.
