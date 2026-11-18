@@ -97,8 +97,15 @@ describe('Phase 5 — decideBeat pure ladder', () => {
   it('standard slots keep the death ladder (severe → nat1 → deep-negative)', () => {
     expect(decideBeat({ ...base, die: 3, margin: -50, wasSevere: true })).toBe('dead');
     expect(decideBeat({ ...base, die: 1, margin: -1 })).toBe('blunder');
-    expect(decideBeat({ ...base, die: 5, margin: -4 })).toBe('dead');
-    expect(decideBeat({ ...base, die: 5, margin: -3 })).toBe('captured');
+    expect(decideBeat({ ...base, die: 5, margin: -5 })).toBe('dead');
+    expect(decideBeat({ ...base, die: 5, margin: -4 })).toBe('captured');
+  });
+
+  it('a nat-1 only sinks a close pass: margin >= EASY_MARGIN downgrades it to narrow', () => {
+    expect(decideBeat({ ...base, die: 1, margin: 8 })).toBe('narrow');
+    expect(decideBeat({ ...base, die: 1, margin: 20 })).toBe('narrow');
+    expect(decideBeat({ ...base, die: 1, margin: 7 })).toBe('blunder');
+    expect(decideBeat({ ...base, die: 1, margin: 0 })).toBe('blunder');
   });
 
   it('F1 ero-gating: severe fails, nat1 and deep-negative margins all funnel to captured', () => {

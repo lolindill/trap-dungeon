@@ -227,7 +227,7 @@ export function PrepPanel({
               <div className="dk-help-hint" style={{ color: 'var(--r)', marginTop: 3 }}>
                 {h.epicKind === 'grandmaster'
                   ? '✝ Sanctuary (d20+13 vs DC+2 -> +1 allies) · Aura +1 · Guarded · No Retreat'
-                  : `💀 Memory (+3 on unchanged floors) · Adaptation (${h.adaptedTags?.join(', ') || 'none yet'}) · Aura +1 · Guarded · No Retreat`}
+                  : `💀 Memory (+3 unchanged floor, +1 per remembered trap otherwise, max +2) · Adaptation (${h.adaptedTags?.join(', ') || 'none yet'}) · Aura +1 · Guarded · No Retreat`}
               </div>
             )}
 

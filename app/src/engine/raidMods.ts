@@ -4,6 +4,7 @@ import { getEstateRaidModifiers } from './estate';
 import { resolveExpeditionAftereffects } from './expedition';
 import { getNextRaidDcBonus, getPrepIntelLeakBonus } from './officers';
 import { clamp } from './rng';
+import { floorDefense } from './floorDefense';
 
 /**
  * Raid-Mods Seam — the single pure resolver that turns previously write-only
@@ -113,8 +114,8 @@ function floorTrapPower(floor: FloorState): number {
       : 0;
   return (
     CFG.DC_BASE +
-    Math.floor((floor.floor - 1) / 3) +
-    clamp(trapSum + synBonus + ascendantBonus, 0, CFG.FLOOR_CAP)
+    Math.floor((floor.floor - 1) / 2) +
+    floorDefense(trapSum, synBonus, ascendantBonus)
   );
 }
 

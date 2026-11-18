@@ -25,6 +25,7 @@ import { evaluateRankTrials, flagOrProtectGameOver } from './endings';
 import { applyMonsterGrowth, isMonsterHurt } from './monsters';
 import {
   buildNemesisFromHero,
+  capNemesisRoster,
   computeHeroSituationAndMetaMods,
   getFloorTrapTags,
   grantUnownedRelic,
@@ -169,7 +170,9 @@ export function selectFacedSlot(
  *   else (all ero fails)                → captured
  */
 export function decideBeat(ctx: BeatCtx): string {
-  if (ctx.die !== 1 && ctx.margin >= 0) {
+  // A nat-1 only sinks a pass that was close: with a comfortable margin it is just a narrow squeak.
+  if (ctx.margin >= 0 && (ctx.die !== 1 || ctx.margin >= CFG.EASY_MARGIN)) {
+    if (ctx.die === 1) return 'narrow';
     return ctx.margin >= CFG.EASY_MARGIN
       ? 'easy'
       : ctx.margin >= CFG.CLEAN_MARGIN
@@ -1428,7 +1431,7 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
     }
   } else if (
     state.wave >= CRISIS_CFG.WRATH_FROM &&
-    (outcome === 'retreat' || outcome === 'breach' || outcome === 'partial')
+    (outcome === 'retreat' || outcome === 'breach')
   ) {
     const escapedElite = state.party.find(
       (h) =>
@@ -1438,7 +1441,7 @@ export function applyWaveSettlement(state: GameState, outcome: RaidOutcome): Gam
     );
     if (escapedElite) {
       const nem = buildNemesisFromHero(postState, escapedElite, state.wave);
-      postState.crises.nemesis = [...postState.crises.nemesis, nem].slice(-EPIC_CFG.NEM_CAP);
+      postState.crises.nemesis = capNemesisRoster([...postState.crises.nemesis, nem], EPIC_CFG.NEM_CAP);
     }
   }
 

@@ -86,15 +86,15 @@ describe('Original Codex (301 presets + 29 combos)', () => {
 
 describe('Room Blueprint Shortcuts & Atomic MP Validation', () => {
   it('computes cumulative room install costs and installs atomically onto empty and partial floors', () => {
-    expect(getRoomInstallCost(0, 2)).toBe(50 + 120);
-    expect(getRoomInstallCost(0, 3)).toBe(50 + 120 + 220);
-    expect(getRoomInstallCost(1, 2)).toBe(120 + 220);
+    expect(getRoomInstallCost(0, 2)).toBe(60 + 110);
+    expect(getRoomInstallCost(0, 3)).toBe(60 + 110 + 170);
+    expect(getRoomInstallCost(1, 2)).toBe(110 + 170);
     expect(getRoomInstallCost(4, 2)).toBeNull();
 
     const combo2 = CODEX_COMBOS.find((c) => c.roomSlots.length === 2)!;
     const roomBp = codexComboToBlueprint(combo2);
 
-    // Empty floor installation (50 + 120 = 170 MP)
+    // Empty floor installation (60 + 110 = 170 MP)
     let state = { ...createInitialGameState(), points: 500 };
     const res1 = installBlueprintToFloor(state, 1, roomBp);
     expect(res1.ok).toBe(true);
@@ -108,12 +108,12 @@ describe('Room Blueprint Shortcuts & Atomic MP Validation', () => {
     expect(prep.newTrapIds).toEqual([]);
     expect(prep.comboFloors).toEqual([]);
 
-    // Partial floor installation (1 existing trap + 2-trap room = 120 + 220 = 340 MP)
+    // Partial floor installation (1 existing trap + 2-trap room = 110 + 170 = 280 MP)
     let state2 = { ...createInitialGameState(), points: 500 };
-    state2 = installCustomTrap(state2, 2, 'Opening spike wall').state; // 450 MP left
+    state2 = installCustomTrap(state2, 2, 'Opening spike wall').state; // 440 MP left
     const res2 = installBlueprintToFloor(state2, 2, roomBp);
     expect(res2.ok).toBe(true);
-    expect(res2.state.points).toBe(450 - 340);
+    expect(res2.state.points).toBe(440 - 280);
     expect(res2.state.floors[1].slots).toHaveLength(3);
     expect(res2.state.floors[1].synergy).toBe(combo2.roomSynergy);
   });
@@ -122,11 +122,11 @@ describe('Room Blueprint Shortcuts & Atomic MP Validation', () => {
     const combo3 = CODEX_COMBOS.find((c) => c.roomSlots.length === 3)!;
     const roomBp3 = codexComboToBlueprint(combo3);
 
-    // Insufficient MP (needs 390, has 389)
-    const lowMpState = { ...createInitialGameState(), points: 389 };
+    // Insufficient MP (needs 340, has 339)
+    const lowMpState = { ...createInitialGameState(), points: 339 };
     const failMp = installBlueprintToFloor(lowMpState, 1, roomBp3);
     expect(failMp.ok).toBe(false);
-    expect(failMp.state.points).toBe(389);
+    expect(failMp.state.points).toBe(339);
     expect(failMp.state.floors[0].slots).toHaveLength(0);
     expect(failMp.state.floors[0].synergy).toBe('-');
 
@@ -186,16 +186,16 @@ describe('Build Suggest (X.tpRoll) & ? Grade Preview', () => {
   });
 
   it('fills empty floor slots from Codex within available MP budget', () => {
-    // Low budget (110) can afford slot #1 (50 MP) but not slot #1 + #2 (170 MP)
+    // Low budget (110) can afford slot #1 (60 MP) but not slot #1 + #2 (170 MP)
     const lowState = { ...createInitialGameState(), points: 110 };
     const lowFill = buildCodexSuggestFillBlueprint(lowState.floors[0], lowState.points, 'mix', () => 0);
     expect(lowFill.blueprint).not.toBeNull();
     expect(lowFill.trapCount).toBe(1);
-    expect(lowFill.totalCost).toBe(50);
+    expect(lowFill.totalCost).toBe(60);
 
     const lowDeploy = installBlueprintToFloor(lowState, 1, lowFill.blueprint!);
     expect(lowDeploy.ok).toBe(true);
-    expect(lowDeploy.state.points).toBe(60);
+    expect(lowDeploy.state.points).toBe(50);
     expect(lowDeploy.state.floors[0].slots).toHaveLength(1);
 
     // Higher MP (450 MP) deploys a multi-trap Codex combo onto empty floor atomically
@@ -210,7 +210,7 @@ describe('Build Suggest (X.tpRoll) & ? Grade Preview', () => {
     expect(richDeploy.state.floors[0].slots).toHaveLength(richFill.trapCount);
     expect(richDeploy.state.points).toBe(450 - richFill.totalCost);
 
-    // Insufficient MP (< 50) returns null cleanly
+    // Insufficient MP (< 60) returns null cleanly
     const brokeFill = buildCodexSuggestFillBlueprint(richState.floors[0], 40, 'mix');
     expect(brokeFill.blueprint).toBeNull();
     expect(brokeFill.trapCount).toBe(0);

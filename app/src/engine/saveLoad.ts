@@ -522,6 +522,7 @@ function migrateFloors(rawFloors: unknown[]): FloorState[] {
         ...(typeof s.wear === 'number' ? { wear: s.wear } : {}),
         ...(typeof s.attunement === 'number' ? { attunement: s.attunement } : {}),
         ...(typeof s.attunedKink === 'string' ? { attunedKink: s.attunedKink } : {}),
+        ...(typeof s.installedWave === 'number' ? { installedWave: s.installedWave } : {}),
       }));
 
     const combatSlots: FloorCombatSlot[] = Array.isArray(candidate.combatSlots)

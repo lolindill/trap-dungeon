@@ -30,7 +30,9 @@ import { heroGradeIndex } from './heroes';
 import { isMonsterDeployed, isMonsterHurt } from './monsters';
 import { getTrapUpgradeDiscountMultiplier } from './officers';
 import { resolveRaidModifiers } from './raidMods';
-import { clamp, uid } from './rng';
+import { floorDefense } from './floorDefense';
+import { getTrapRefund } from './trapRefund';
+import { uid } from './rng';
 
 const TRAP_ORDER: Record<TrapGrade, number> = {
   D: 1,
@@ -303,7 +305,7 @@ export function getFloorDC(floor: FloorState, state?: GameState): number {
     ? 1
     : 0;
   const baseDc =
-    CFG.DC_BASE + Math.floor((floor.floor - 1) / 3) + clamp(trapSum + synBonus + ascendantBonus, 0, CFG.FLOOR_CAP);
+    CFG.DC_BASE + Math.floor((floor.floor - 1) / 2) + floorDefense(trapSum, synBonus, ascendantBonus);
   if (!state || floor.slots.length === 0) return baseDc;
   const shieldBonus = floor.floor === 1 && state.relics?.owned.includes('shield') ? 1 : 0;
   // Ticket 15 raid-mods seam: external DC modifiers (estate / crises / Lilim perks)
@@ -421,6 +423,7 @@ export function installCustomTrap(
     grade: '?',
     types: [],
     mpInvested: cost,
+    installedWave: state.wave,
   };
 
   const nextSlots = [...floor.slots, newSlot];
@@ -442,6 +445,37 @@ export function installCustomTrap(
     ok: true,
     message: msg,
   };
+}
+
+/** S/A grades already handed out to slots installed this wave (any source). */
+function countWaveGradeQuota(state: GameState): { S: number; A: number } {
+  const used = { S: 0, A: 0 };
+  for (const f of state.floors) {
+    for (const sl of f.slots) {
+      if (sl.installedWave !== state.wave) continue;
+      if (sl.grade === 'S') used.S += 1;
+      else if (sl.grade === 'A') used.A += 1;
+    }
+  }
+  return used;
+}
+
+/**
+ * Pre-rated installs obey the same per-wave quota as AI grading (CFG.GRADE_QUOTA, new-trap max S):
+ * the first installs keep their grade, later ones step down (S -> A -> B). Mutates `used`.
+ */
+function applyInstallGradeQuota(grade: SlotGrade, used: { S: number; A: number }): SlotGrade {
+  let g: SlotGrade = grade;
+  if (g === 'SS' || g === 'SSS') g = CFG.NEW_TRAP_MAX;
+  if (g === 'S') {
+    if (used.S >= CFG.GRADE_QUOTA.S) g = 'A';
+    else used.S += 1;
+  }
+  if (g === 'A') {
+    if (used.A >= CFG.GRADE_QUOTA.A) g = 'B';
+    else used.A += 1;
+  }
+  return g;
 }
 
 export function installBlueprintToFloor(
@@ -481,16 +515,21 @@ export function installBlueprintToFloor(
       };
     }
 
+    const quotaUsed = countWaveGradeQuota(state);
+    let downgraded = 0;
     const newSlots: TrapSlot[] = roomSlots.map((rs, idx) => {
       const slotCost = getInstallCost(floor.slots.length + idx)!;
+      const slotGrade = applyInstallGradeQuota(rs.grade, quotaUsed);
+      if (slotGrade !== rs.grade) downgraded += 1;
       const combinedText = `${rs.name} — ${rs.detail}`.slice(0, CFG.NAME_MAXLEN);
       return {
         id: uid('trap'),
         text: combinedText,
-        grade: rs.grade,
+        grade: slotGrade,
         types: [...rs.types],
         mpInvested: slotCost,
         blueprintId: blueprint.id,
+        installedWave: state.wave,
       };
     });
 
@@ -505,7 +544,8 @@ export function installBlueprintToFloor(
     );
 
     const synLabel = nextSynergy === '?' ? 'Synergy ?' : `Synergy ${nextSynergy}`;
-    const msg = `${floorNum}F deployed room "${blueprint.name}" (${newSlots.length} traps, ${synLabel}) · -${totalCost} MP`;
+    const quotaNote = downgraded > 0 ? ` · ${downgraded} grade(s) capped by wave quota` : '';
+    const msg = `${floorNum}F deployed room "${blueprint.name}" (${newSlots.length} traps, ${synLabel}) · -${totalCost} MP${quotaNote}`;
     return {
       state: {
         ...state,
@@ -528,13 +568,15 @@ export function installBlueprintToFloor(
   }
 
   const combinedText = `${blueprint.name} — ${blueprint.detail}`.slice(0, CFG.NAME_MAXLEN);
+  const finalGrade = applyInstallGradeQuota(blueprint.grade, countWaveGradeQuota(state));
   const newSlot: TrapSlot = {
     id: uid('trap'),
     text: combinedText,
-    grade: blueprint.grade,
+    grade: finalGrade,
     types: [...blueprint.types],
     mpInvested: cost,
     blueprintId: blueprint.id,
+    installedWave: state.wave,
   };
 
   const nextSlots = [...floor.slots, newSlot];
@@ -544,7 +586,9 @@ export function installBlueprintToFloor(
       : f
   );
 
-  const gradeBadge = blueprint.grade === '?' ? 'unrated' : `pre-rated ${blueprint.grade}`;
+  const cappedNote = finalGrade !== blueprint.grade ? ` (capped from ${blueprint.grade} by wave quota)` : '';
+  const gradeBadge =
+    finalGrade === '?' ? 'unrated' : `pre-rated ${finalGrade}${cappedNote}`;
   const msg = `${floorNum}F deployed shortcut "${blueprint.name}" (${gradeBadge}) · -${cost} MP`;
   return {
     state: {
@@ -651,7 +695,7 @@ export function removeTrapFromFloor(
   const slot = floor?.slots[slotIdx];
   if (!floor || !slot) return { state, ok: false, message: 'Trap not found.' };
 
-  const refund = Math.floor(slot.mpInvested * CFG.REFUND_RATE);
+  const refund = getTrapRefund(slot);
   const nextSlots = floor.slots.filter((_, i) => i !== slotIdx);
   const removedCombat = nextSlots.length === 0 ? getFloorCombatSlots(floor) : [];
   const nextFloors = state.floors.map((f, idx) =>

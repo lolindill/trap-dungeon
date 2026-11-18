@@ -303,7 +303,10 @@ describe('Phase 3: SS/SSS/EPIC Grit, 4 Major Crises, and 4 Relics', () => {
 
       // Case B: Capture / blunder roll (die = 1, non-lethal) consumes 1 Grit pip (3 -> 2)
       rngSpy.mockReturnValue(0); // d20 = 1 -> blunder
-      const resCap = resolveFloorEncounter({ ...s, fear: 0, lust: 0 }, s.floors[0], [ssHero], 25);
+      // A nat-1 only blunders when the pass was close (margin < EASY_MARGIN), so give the SS hero a
+      // 2-trap floor (DC 14, margin ~3) instead of the 1-trap floor where the margin sits right at 8.
+      const closeFloor = { ...s.floors[0], slots: [...s.floors[0].slots, { ...s.floors[0].slots[0], id: 'close-2' }] };
+      const resCap = resolveFloorEncounter({ ...s, fear: 0, lust: 0 }, closeFloor, [ssHero], 25);
       expect(resCap.party[0].status).toBe('alive');
       expect(resCap.party[0].grit).toBe(2);
       expect(resCap.party[0].cond).toBe('injured');

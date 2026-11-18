@@ -466,7 +466,7 @@ export const EPIC_CFG = {
 } as const;
 
 export const CRISIS_CFG = {
-  WRATH_FROM: 25,
+  WRATH_FROM: 16,
   WRATH_KILL: 6,
   WRATH_STREAK: 4,
   WRATH_BREACH: 12,

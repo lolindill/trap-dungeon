@@ -63,13 +63,13 @@ describe('assetManifest resolution', () => {
 describe('dungeon building & Trap Blueprint Shortcuts', () => {
   it('installs custom traps with escalating slot costs and supports upgrade/rename/refund', () => {
     let state = { ...createInitialGameState(), points: 110 }; // fixed budget for escalating slot costs
-    expect(getInstallCost(0)).toBe(50);
-    expect(getInstallCost(1)).toBe(120);
+    expect(getInstallCost(0)).toBe(60);
+    expect(getInstallCost(1)).toBe(110);
 
     const r1 = installCustomTrap(state, 1, 'Oil-slick spike corridor');
     expect(r1.ok).toBe(true);
     state = r1.state;
-    expect(state.points).toBe(60);
+    expect(state.points).toBe(50);
     expect(state.floors[0].slots[0].grade).toBe('?');
 
     // Rename trap
@@ -82,10 +82,10 @@ describe('dungeon building & Trap Blueprint Shortcuts', () => {
     const cannotUpgUnrated = upgradeTrapOnFloor(state, 1, 0);
     expect(cannotUpgUnrated.ok).toBe(false);
 
-    // Dismantle refunds 50% (floor(50 * 0.5) = 25)
+    // Dismantle refunds 50% (floor(60 * 0.5) = 30)
     const rRem = removeTrapFromFloor(state, 1, 0);
     expect(rRem.ok).toBe(true);
-    expect(rRem.state.points).toBe(60 + 25);
+    expect(rRem.state.points).toBe(50 + 30);
   });
 
   it('installs pre-rated Trap Blueprint Shortcut without queuing it for LLM re-grading', () => {

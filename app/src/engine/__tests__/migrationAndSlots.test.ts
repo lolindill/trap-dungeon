@@ -410,7 +410,7 @@ describe('waveStartSnapshot capture and rewind', () => {
 
     // Spend MP in Build and save to Slot 1 separately
     let state = installCustomTrap(initial, 1, 'Spike Trap').state;
-    expect(state.points).toBe(CFG.START_POINTS - 50);
+    expect(state.points).toBe(CFG.START_POINTS - CFG.INSTALL_COST[0]);
     saveToSlot(1, state, 'Manual Slot 1');
 
     // Cancel Prep back to Build should NOT overwrite waveStartSnapshot
@@ -424,7 +424,7 @@ describe('waveStartSnapshot capture and rewind', () => {
     expect(rewound!.points).toBe(CFG.START_POINTS);
     expect(rewound!.floors[0].slots).toHaveLength(0);
     expect(rewound!.waveStartSnapshot).not.toBeNull();
-    expect(loadFromSlot(1)?.points).toBe(CFG.START_POINTS - 50);
+    expect(loadFromSlot(1)?.points).toBe(CFG.START_POINTS - CFG.INSTALL_COST[0]);
 
     // Full wave completion captures a fresh snapshot at start of next Build
     let run = { ...createInitialGameState(), points: 500 };

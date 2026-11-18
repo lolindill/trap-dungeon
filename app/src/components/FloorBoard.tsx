@@ -26,6 +26,7 @@ import {
   toggleFloorLabBuff,
   type CodexSuggestMode,
 } from '../engine/dungeon';
+import { getTrapRefund } from '../engine/trapRefund';
 import { disposeMonster, getMonsterSellPrice, isMonsterHurt } from '../engine/monsters';
 import { REALM_COUNTERMEASURES, REALM_SITUATIONS } from '../data/realmData';
 import { applyRealmCountermeasure, canCounterRealmSituation, getActiveRealmSituations } from '../engine/realm';
@@ -490,7 +491,7 @@ export function FloorBoard({
         selectedFloor.slots.map((slot, idx) => {
           const nextGrade = getNextGrade(slot.grade);
           const upgCost = getUpgradeCost(slot.grade);
-          const refund = Math.floor(slot.mpInvested * CFG.REFUND_RATE);
+          const refund = getTrapRefund(slot);
           const canUpg = nextGrade !== null && upgCost !== null && state.points >= upgCost;
           const isEditing = editingIdx === idx;
           const pendingPreview =

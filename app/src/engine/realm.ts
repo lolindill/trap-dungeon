@@ -704,10 +704,17 @@ export function computeHeroSituationAndMetaMods(
 
   let nemesisMod = 0;
   if (hero.epicKind === 'nemesis' && hero.nemesisSignatures && floor.slots.length > 0) {
+    // Memory is gradual: +1 per remembered trap on this floor. A fully unchanged floor earns the
+    // full +3; changing one trap costs one point instead of all three.
     const floorSig = getFloorSignature(floor);
-    if (floorSig && hero.nemesisSignatures.includes(floorSig)) {
-      nemesisMod = 3;
-      labels.push('🧠Mem+3');
+    if (floorSig) {
+      const remembered = new Set(hero.nemesisSignatures.flatMap((sig) => sig.split('|')));
+      const matches = floor.slots.filter((s) =>
+        remembered.has(`${s.text.trim()}:${s.grade}:${[...s.types].sort().join(',')}`)
+      ).length;
+      // Exact floor match = full +3; a changed floor keeps at most +2 so tweaking never ties unchanged.
+      nemesisMod = hero.nemesisSignatures.includes(floorSig) ? 3 : Math.min(2, matches);
+      if (nemesisMod > 0) labels.push(`🧠Mem+${nemesisMod}`);
     }
   }
 
@@ -811,6 +818,27 @@ export function buildRealmAndPartyPromptLine(state: GameState): string | null {
 /**
  * Creates a NemesisRecord when an A+ non-EPIC hero escapes (retreat or breach).
  */
+/**
+ * Keep at most `cap` nemeses, evicting the LOWEST-threat (lowest hero grade) first; ties evict the
+ * oldest. Survivors keep their order.
+ */
+// Local grade index (heroes.ts imports this module, so it cannot be imported back).
+function nemesisThreat(n: NemesisRecord): number {
+  return n.grade === 'EPIC' ? CFG.HERO_GRADES.length : CFG.HERO_GRADES.indexOf(n.grade as (typeof CFG.HERO_GRADES)[number]);
+}
+
+export function capNemesisRoster(roster: NemesisRecord[], cap: number): NemesisRecord[] {
+  const out = [...roster];
+  while (out.length > cap) {
+    let worst = 0;
+    for (let i = 1; i < out.length; i++) {
+      if (nemesisThreat(out[i]) < nemesisThreat(out[worst])) worst = i;
+    }
+    out.splice(worst, 1);
+  }
+  return out;
+}
+
 export function buildNemesisFromHero(state: GameState, hero: Hero, wave: number): NemesisRecord {
   const signatures = state.floors
     .filter((f) => f.slots.length > 0)

@@ -16,6 +16,7 @@ import {
   SELLSWORD_RAID_MOD_VALUE,
 } from './raidMods';
 import { clamp, pickOne } from './rng';
+import { getTrapRefund } from './trapRefund';
 
 const DEBT_MIN_SCHEDULE = [30, 60, 120, 180, 240, 300, 360] as const;
 // Ticket 25: the installment floor also tracks recent estate income so
@@ -929,7 +930,7 @@ export function calcNetAssets(state: GameState): number {
   let total = 0;
   for (const fl of state.floors) {
     for (const slot of fl.slots) {
-      total += slot.mpInvested ?? 0;
+      total += getTrapRefund(slot);
     }
   }
   for (const lv of Object.values(state.estate.facilities)) {

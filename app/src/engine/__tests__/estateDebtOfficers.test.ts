@@ -1433,23 +1433,23 @@ describe('Ticket 18: Trap Upgrade Discount & Estate buildCostMult Installs', () 
         lilim: { ...state.officers.lilim, stage: 1 },
       },
     };
-    // C -> B base 120 MP, Lilim S1 cut 10% -> floor(120 * 0.9) = 108
+    // C -> B base 100 MP, Lilim S1 cut 10% -> floor(100 * 0.9) = 90
     const res = upgradeTrapOnFloor(lilimS1, 1, 0);
     expect(res.ok).toBe(true);
-    expect(res.state.points).toBe(500 - 50 - 108);
-    expect(res.message).toBe('1F upgraded C → B · -108 MP');
-    expect(res.state.flash).toBe('1F upgraded C → B · -108 MP');
+    expect(res.state.points).toBe(500 - 60 - 90);
+    expect(res.message).toBe('1F upgraded C → B · -90 MP');
+    expect(res.state.flash).toBe('1F upgraded C → B · -90 MP');
     expect(res.state.floors[0].slots[0].grade).toBe('B');
-    expect(res.state.floors[0].slots[0].mpInvested).toBe(50 + 108);
+    expect(res.state.floors[0].slots[0].mpInvested).toBe(60 + 90);
 
     // Insufficient-MP message quotes the DISCOUNTED price, not the base.
-    const poor = { ...lilimS1, points: 100 };
+    const poor = { ...lilimS1, points: 80 };
     const denied = upgradeTrapOnFloor(poor, 1, 0);
     expect(denied.ok).toBe(false);
-    expect(denied.message).toBe('Need 108 MP to upgrade to B.');
+    expect(denied.message).toBe('Need 90 MP to upgrade to B.');
 
     // Discount stacks: stage 1 (-0.10) + trapUpgradeCut (-0.10) + smithy 2 (-0.10)
-    // -> multiplier 0.70 -> floor(120 * 0.7) = 84
+    // -> multiplier 0.70 -> floor(100 * 0.7) = 70
     const stacked = {
       ...lilimS1,
       estate: {
@@ -1460,8 +1460,8 @@ describe('Ticket 18: Trap Upgrade Discount & Estate buildCostMult Installs', () 
     };
     const resStacked = upgradeTrapOnFloor(stacked, 1, 0);
     expect(resStacked.ok).toBe(true);
-    expect(resStacked.state.points).toBe(500 - 50 - 84);
-    expect(resStacked.message).toBe('1F upgraded C → B · -84 MP');
+    expect(resStacked.state.points).toBe(500 - 60 - 70);
+    expect(resStacked.message).toBe('1F upgraded C → B · -70 MP');
   });
 
   it('scales facility / landmark / wonder install costs by buildCostMult', () => {

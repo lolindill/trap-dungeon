@@ -56,6 +56,8 @@ export interface TrapSlot {
   wear?: number;
   attunement?: number;
   attunedKink?: string;
+  /** Wave in which this slot was installed — lets the per-wave S/A grade quota cover blueprint installs. */
+  installedWave?: number;
 }
 
 export type FloorCombatSlot =
